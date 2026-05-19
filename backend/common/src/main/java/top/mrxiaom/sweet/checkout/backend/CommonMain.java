@@ -4,12 +4,12 @@ import com.google.gson.ExclusionStrategy;
 import com.google.gson.FieldAttributes;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.annotations.Expose;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import top.mrxiaom.sweet.checkout.backend.data.ClientInfo;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 @SuppressWarnings({"FieldMayBeFinal"})
@@ -22,7 +22,8 @@ public abstract class CommonMain<C extends ClientInfo<C>, S extends AbstractPaym
             .setExclusionStrategies(new ExclusionStrategy() {
                 @Override
                 public boolean shouldSkipField(FieldAttributes fieldAttributes) {
-                    return false;
+                    Expose expose = fieldAttributes.getAnnotation(Expose.class);
+                    return expose != null && !expose.serialize();
                 }
 
                 @Override
@@ -69,8 +70,12 @@ public abstract class CommonMain<C extends ClientInfo<C>, S extends AbstractPaym
             config.postLoad(getDataFolder());
             String configRaw = gson.toJson(config);
             FileUtils.writeStringToFile(file, configRaw, StandardCharsets.UTF_8);
-        } catch (IOException e) {
+        } catch (Exception e) {
             logger.warn("加载配置文件时出现异常", e);
+            if (config == null) {
+                config = new Configuration();
+                config.postLoad(getDataFolder());
+            }
         }
     }
 }

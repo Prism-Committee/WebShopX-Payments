@@ -41,8 +41,22 @@ class MapperImpl implements Mapper {
                 .url(request.uri());
 
         //request.timeout().ifPresent(builder::timeout);
-        builder.method(request.method().name(), request.bodyPublisher().isPresent() ?
-                RequestBody.create(MediaType.get("*/*")/*TODO: media type*/, request.bodyPublisher().get().get()) : null);
+        RequestBody body = null;
+        switch (request.method()) {
+            case POST:
+            case PUT:
+            case PATCH:
+                if (request.bodyPublisher().isPresent()) {
+                    body = RequestBody.create(
+                            MediaType.get(request.headers().contentType().orElse("application/octet-stream")),
+                            request.bodyPublisher().get().get()
+                    );
+                }
+                break;
+            default:
+                break;
+        }
+        builder.method(request.method().name(), body);
 
         String[] headersArray = request.headers().toArray();
         if (headersArray.length > 0) {

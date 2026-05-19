@@ -26,6 +26,8 @@ public class Configuration {
     private boolean debug = false;
     @SerializedName("port")
     private int port = 62233;
+    @SerializedName("proxy")
+    private ProxySettings proxy = ProxySettings.defaults();
     @SerializedName("wechat_native")
     private WeChatNative weChatNative = new WeChatNative();
     @SerializedName("alipay_face2face")
@@ -76,6 +78,14 @@ public class Configuration {
         return port;
     }
 
+    public ProxySettings getProxy() {
+        return proxy;
+    }
+
+    public ProxySettings resolveProxy(ProxySettings override) {
+        return ProxySettings.resolve(proxy, override);
+    }
+
     public WeChatNative getWeChatNative() {
         return weChatNative;
     }
@@ -105,6 +115,84 @@ public class Configuration {
     }
 
     @SuppressWarnings({"FieldMayBeFinal", "FieldCanBeLocal"})
+    public static class ProxySettings {
+        private Boolean enable;
+        private String type;
+        private String host;
+        private Integer port;
+        private String username;
+        private String password;
+
+        private static ProxySettings defaults() {
+            ProxySettings settings = new ProxySettings();
+            settings.enable = false;
+            settings.type = "HTTP";
+            settings.host = "127.0.0.1";
+            settings.port = 7890;
+            settings.username = "";
+            settings.password = "";
+            return settings;
+        }
+
+        private static ProxySettings resolve(ProxySettings base, ProxySettings override) {
+            ProxySettings defaults = defaults();
+            ProxySettings resolved = new ProxySettings();
+            resolved.enable = firstBoolean(override == null ? null : override.enable, base == null ? null : base.enable, defaults.enable);
+            resolved.type = firstString(override == null ? null : override.type, base == null ? null : base.type, defaults.type);
+            resolved.host = firstString(override == null ? null : override.host, base == null ? null : base.host, defaults.host);
+            resolved.port = firstInteger(override == null ? null : override.port, base == null ? null : base.port, defaults.port);
+            resolved.username = firstString(override == null ? null : override.username, base == null ? null : base.username, defaults.username);
+            resolved.password = firstString(override == null ? null : override.password, base == null ? null : base.password, defaults.password);
+            return resolved;
+        }
+
+        private static Boolean firstBoolean(Boolean... values) {
+            for (Boolean value : values) {
+                if (value != null) return value;
+            }
+            return false;
+        }
+
+        private static Integer firstInteger(Integer... values) {
+            for (Integer value : values) {
+                if (value != null) return value;
+            }
+            return 0;
+        }
+
+        private static String firstString(String... values) {
+            for (String value : values) {
+                if (value != null && !value.trim().isEmpty()) return value;
+            }
+            return "";
+        }
+
+        public boolean isEnable() {
+            return Boolean.TRUE.equals(enable);
+        }
+
+        public String getType() {
+            return type == null ? "HTTP" : type;
+        }
+
+        public String getHost() {
+            return host == null ? "" : host;
+        }
+
+        public int getPort() {
+            return port == null ? 0 : port;
+        }
+
+        public String getUsername() {
+            return username == null ? "" : username;
+        }
+
+        public String getPassword() {
+            return password == null ? "" : password;
+        }
+    }
+
+    @SuppressWarnings({"FieldMayBeFinal", "FieldCanBeLocal"})
     public static class WeChatNative {
         private boolean enable = false;
         @SerializedName("host")
@@ -123,6 +211,8 @@ public class Configuration {
         private String publicKey = "file:secrets/wechat/pub_key.pem";
         @SerializedName("public_key_id")
         private String publicKeyId = "公钥ID";
+        @SerializedName("proxy")
+        private ProxySettings proxy;
 
         @JsonAdapter(NullAdapter.class)
         @Expose(serialize = false, deserialize = false)
@@ -161,6 +251,10 @@ public class Configuration {
         public WXPay getConfig() {
             return config;
         }
+
+        public ProxySettings getProxy() {
+            return proxy;
+        }
     }
 
     @SuppressWarnings({"FieldMayBeFinal", "FieldCanBeLocal"})
@@ -178,6 +272,8 @@ public class Configuration {
         private boolean useBasicPollingMode = false;
         @SerializedName("seller_id")
         private String sellerId = "";
+        @SerializedName("proxy")
+        private ProxySettings proxy;
 
         @JsonAdapter(NullAdapter.class)
         @Expose(serialize = false, deserialize = false)
@@ -231,6 +327,10 @@ public class Configuration {
         public AlipayConfig getConfig() {
             return config;
         }
+
+        public ProxySettings getProxy() {
+            return proxy;
+        }
     }
 
     public static class Paypal {
@@ -241,6 +341,10 @@ public class Configuration {
         private String clientId = "";
         @SerializedName("client_secret")
         private String clientSecret = "";
+        @SerializedName("currency")
+        private String currency = "USD";
+        @SerializedName("proxy")
+        private ProxySettings proxy;
 
         @JsonAdapter(NullAdapter.class)
         @Expose(serialize = false, deserialize = false)
@@ -267,6 +371,14 @@ public class Configuration {
 
         public PayperConfig getConfig() {
             return config;
+        }
+
+        public String getCurrency() {
+            return currency == null || currency.trim().isEmpty() ? "USD" : currency.trim().toUpperCase();
+        }
+
+        public ProxySettings getProxy() {
+            return proxy;
         }
     }
 
@@ -322,6 +434,8 @@ public class Configuration {
         private String alipayPublicKey = "file:secrets/alipay/public.txt";
         @SerializedName("seller_id")
         private String sellerId = "";
+        @SerializedName("proxy")
+        private ProxySettings proxy;
 
         @JsonAdapter(NullAdapter.class)
         @Expose(serialize = false, deserialize = false)
@@ -362,6 +476,10 @@ public class Configuration {
 
         public AlipayConfig getConfig() {
             return config;
+        }
+
+        public ProxySettings getProxy() {
+            return proxy;
         }
     }
 

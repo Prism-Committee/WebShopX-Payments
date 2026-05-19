@@ -41,6 +41,16 @@ tasks {
         duplicatesStrategy = DuplicatesStrategy.INCLUDE
         configurations.add(project.configurations.runtimeClasspath.get())
         configurations.add(shadowLink)
+        exclude(
+            "META-INF/LICENSE",
+            "META-INF/LICENSE.txt",
+            "META-INF/NOTICE",
+            "META-INF/NOTICE.txt",
+            "META-INF/DEPENDENCIES",
+            "META-INF/*.SF",
+            "META-INF/*.DSA",
+            "META-INF/*.RSA",
+        )
         val shadowRelocations: Map<String, String> by project.extra
         mapOf(
             "com.google.gson" to "gson",

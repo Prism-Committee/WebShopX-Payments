@@ -8,6 +8,7 @@ import com.wechat.pay.utils.WXPayUtility;
 import top.mrxiaom.sweet.checkout.backend.AbstractPaymentServer;
 import top.mrxiaom.sweet.checkout.backend.Configuration;
 import top.mrxiaom.sweet.checkout.backend.data.ClientInfo;
+import top.mrxiaom.sweet.checkout.backend.util.ProxySupport;
 import top.mrxiaom.sweet.checkout.backend.util.Util;
 import top.mrxiaom.sweet.checkout.packets.plugin.PacketPluginRequestOrder;
 
@@ -83,11 +84,11 @@ public class PaymentWeChat<C extends ClientInfo<C>> {
         // 调用下单方法，得到应答
         NativePrepay.Response response;
         try {
-            response = service.run(request);
+            response = ProxySupport.call(config.resolveProxy(config.getWeChatNative().getProxy()), server.getLogger(), () -> service.run(request));
             if (config.isDebug()) {
                 server.getLogger().info("[DEBUG] 微信 Native支付 下单结果: {}", WXPayUtility.toJson(response));
             }
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             client.removeOrder(orderId);
             server.getLogger().warn("微信 Native支付 API执行错误", e);
             return new PacketPluginRequestOrder.Response("payment.internal-error");
@@ -126,11 +127,11 @@ public class PaymentWeChat<C extends ClientInfo<C>> {
 
         QueryByOutTradeNo.Response response;
         try {
-            response = service.run(request);
+            response = ProxySupport.call(config.resolveProxy(config.getWeChatNative().getProxy()), server.getLogger(), () -> service.run(request));
             if (config.isDebug()) {
                 server.getLogger().info("[DEBUG] 微信 Native支付 检查结果: {}", WXPayUtility.toJson(response));
             }
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             server.getLogger().warn("微信 Native支付 API检查订单时执行错误", e);
             return;
         }
@@ -171,8 +172,8 @@ public class PaymentWeChat<C extends ClientInfo<C>> {
         request.outTradeNo = orderId;
 
         try {
-            service.run(request);
-        } catch (RuntimeException e) {
+            ProxySupport.run(config.resolveProxy(config.getWeChatNative().getProxy()), server.getLogger(), () -> service.run(request));
+        } catch (Exception e) {
             server.getLogger().warn("微信 Native支付 API关闭交易时执行错误", e);
         }
     }

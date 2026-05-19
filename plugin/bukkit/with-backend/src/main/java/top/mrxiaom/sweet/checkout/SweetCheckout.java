@@ -33,17 +33,22 @@ public class SweetCheckout extends PluginCommon {
     @Override
     protected void beforeReloadConfig(FileConfiguration config) {
         super.beforeReloadConfig(config);
-        main.beforePluginReloadConfig();
+        if (main != null) {
+            main.beforePluginReloadConfig();
+        }
     }
 
     @Override
     protected void afterDisable() {
         super.afterDisable();
-        main.getServer().stop();
+        if (main != null) {
+            main.getServer().stop();
+            main = null;
+        }
     }
 
     @Override
     public PaymentClient handlePaymentReload(PaymentAPI parent, @Nullable String url) {
-        return main.getClient();
+        return main == null ? null : main.getClient();
     }
 }

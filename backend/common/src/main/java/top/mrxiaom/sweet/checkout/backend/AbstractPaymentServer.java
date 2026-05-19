@@ -156,6 +156,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
         if (method == null) {
             return new PacketPluginCreatePayment.Response("payment.type-unknown");
         }
+        Configuration config = getConfig();
         String playerName = "wsxpay:" + packet.getMerchantOrderId();
         PacketPluginRequestOrder request = new PacketPluginRequestOrder(
                 playerName,
@@ -182,7 +183,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
                 paymentUrl,
                 qrCodeUrl,
                 actualAmountMinor,
-                packet.getCurrency() == null || packet.getCurrency().trim().isEmpty() ? "CNY" : packet.getCurrency(),
+                "paypal".equals(method) ? config.getPaypal().getCurrency() : "CNY",
                 method,
                 response.getSubType(),
                 packet.getExpiresAt(),
@@ -197,6 +198,16 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
         }
         if (order == null && packet.getMerchantOrderId() != null && !packet.getMerchantOrderId().trim().isEmpty()) {
             order = client.getOrderByPlayer("wsxpay:" + packet.getMerchantOrderId());
+        }
+        String method = normalizeMethod(packet.getMethodCode() == null ? packet.getMethod() : packet.getMethodCode());
+        if (method == null && order != null) {
+            method = normalizeMethod(order.getType());
+        }
+        if ("paypal".equals(method) && getConfig().getPaypal().isEnable()) {
+            PacketPluginQueryPayment.Response response = paypal.handleQueryPayment(packet, getConfig());
+            if (response.getError() == null || response.getError().isEmpty() || order == null) {
+                return response;
+            }
         }
         if (order == null) {
             return new PacketPluginQueryPayment.Response("payment.cancel.not-found");
@@ -214,7 +225,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
                 null,
                 null,
                 priceToAmountMinor(order.getMoney()),
-                "CNY",
+                "paypal".equals(method) ? getConfig().getPaypal().getCurrency() : "CNY",
                 0L,
                 0L,
                 Collections.emptyMap()
@@ -275,12 +286,13 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
     public void sendPaymentSuccess(@NotNull C client, @NotNull ClientInfo.Order<C> order, @NotNull String money) {
         Map<String, String> extra = new LinkedHashMap<>();
         extra.put("source", "backend");
+        String currency = currencyForMethod(order.getType());
         send(client, new PacketBackendPaymentEvent(
                 null,
                 order.getId(),
                 "SUCCESS",
                 priceToAmountMinor(money),
-                "CNY",
+                currency,
                 order.getType(),
                 null,
                 System.currentTimeMillis(),
@@ -294,12 +306,13 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
         Map<String, String> extra = new LinkedHashMap<>();
         extra.put("source", "backend");
         extra.put("reason", reason);
+        String currency = currencyForMethod(order.getType());
         send(client, new PacketBackendPaymentEvent(
                 null,
                 order.getId(),
                 statusFromCancelReason(reason),
                 priceToAmountMinor(order.getMoney()),
-                "CNY",
+                currency,
                 order.getType(),
                 null,
                 0L,
@@ -315,6 +328,13 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
         if (lower.contains("cancel") || lower.contains("closed") || lower.contains("voided")) return "CANCELLED";
         if (lower.contains("failed") || lower.contains("error")) return "FAILED";
         return "UNKNOWN";
+    }
+
+    private String currencyForMethod(String method) {
+        if ("paypal".equalsIgnoreCase(method)) {
+            return getConfig().getPaypal().getCurrency();
+        }
+        return "CNY";
     }
 
     public void onMessage(C client, String s) {

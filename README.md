@@ -1,10 +1,10 @@
 # WebShopX-Payments / WSXPay
 
-WSXPay 是 fork 自 SweetCheckout 的 WebShopX 支付 provider。它保留支付宝、微信、PayPal、Hook、WebSocket 后端和二维码能力，并通过 Bukkit `ServicesManager` 注册 `WebShopXPaymentApi`，由 WebShopX 主插件负责订单、钱包、入账和发货。
+WSXPay 是 fork 自 SweetCheckout 的 WebShopX 支付 provider。它保留支付宝、微信、PayPal、Hook、内嵌支付后端和二维码能力，并通过 Bukkit `ServicesManager` 注册 `WebShopXPaymentApi`，由 WebShopX 主插件负责订单、钱包、入账和发货。
 
 本仓库仍保留原 SweetCheckout 的部分兼容命令与模块，后续会逐步弱化内置商城、点券、排行、PAPI 等与 WebShopX 重叠的业务。原项目来源与许可证说明保留在本 README 和 `LICENSE` 中。
 
-![Minecraft versions](https://img.shields.io/badge/minecraft-1.7.10--26.1-blue) ![Bukkit WS Java Compatible](https://img.shields.io/badge/bukkit--ws-Java_8-purple) ![Bukkit with Backend Java Compatible](https://img.shields.io/badge/bukkit--with--backend-Java_8-purple) ![Backend Java Compatible](https://img.shields.io/badge/backend--cli-Java_17-purple)
+![Minecraft versions](https://img.shields.io/badge/minecraft-1.7.10--26.1-blue) ![Bukkit with Backend Java Compatible](https://img.shields.io/badge/bukkit--with--backend-Java_8-purple)
 
 <details>
     <summary>免责声明</summary>
@@ -21,24 +21,24 @@ WSXPay 是 fork 自 SweetCheckout 的 WebShopX 支付 provider。它保留支付
 
 ```
 WSXPay 目录结构
-  ├─ backend: 支付系统后端
+  ├─ backend: 内嵌支付后端公共代码
   ├─ packets: 网络包结构
   ├─ plugin: Bukkit插件
   └─ wechat-hook: 微信Hook软件
 ```
 
-+ `支付系统后端`: 负责中转和管理插件请求与支付接口请求，储存支付排队序列
-+ `网络包结构`: 后端与插件进行通讯的网络包结构 (json) 处理模块
-+ `Bukkit插件`: 注册 `WebShopXPaymentApi` 并转发支付请求，兼容旧交互逻辑
++ `内嵌支付后端公共代码`: 负责支付平台下单、查询和 Hook/回调处理，由 `with-backend` Bukkit 插件直接加载
++ `网络包结构`: 插件内部支付请求和事件对象
++ `Bukkit插件`: 注册 `WebShopXPaymentApi`，内嵌支付后端，兼容旧交互逻辑
 + `微信Hook软件`: 接收微信收款消息，转发给后端处理
 
 ## 使用方法
 
-将后端部署在服务器上，使用 `java -jar backend-x.x.x.jar` 的方式启动后端，编辑 `config.json`，输入各支付方案的参数，保存并重载后端。
+在 Minecraft 服务端上安装 WebShopX 和 WSXPay `with-backend` Bukkit 插件。WSXPay 的支付后端已经内嵌在插件中，不需要额外启动独立后端进程。
 
 在 [MCIO Plugins](https://plugins.mcio.dev/docs/checkout/install/backend) 文档中有一些支付方案的配置教程，自行查阅。
 
-后端部署完成后，在 Minecraft 服务端上安装 WebShopX 和 WSXPay Bukkit 插件，安装后在 `config.yml` 中配置后端地址，使得插件可以与后端通讯。WebShopX 会通过 `WebShopXPaymentApi` 调用 providerId 为 `webshopx-payments` 的支付服务。
+安装后，编辑 WSXPay 插件目录中的 `backend/config.json` 配置支付宝、微信、PayPal 等支付平台参数；编辑 `config.yml` 调整 Bukkit 侧支付方式开关。WebShopX 会通过 `WebShopXPaymentApi` 调用 providerId 为 `webshopx-payments` 的支付服务。
 
 旧版 `/cz points`、`/checkout buy` 等命令暂作为兼容入口保留；WebShopX 接入时不应依赖这些命令完成充值或发货。
 
@@ -50,7 +50,7 @@ WSXPay 目录结构
 WebShopX
   -> Bukkit ServicesManager
   -> WebShopX-Payments / WSXPay
-  -> WSXPay WebSocket 或内嵌后端
+  -> WSXPay 内嵌后端
   -> 支付宝 / 微信 / PayPal
 ```
 
@@ -71,8 +71,6 @@ provider-id: webshopx-payments
 legacy-business:
   enabled: false
   placeholderapi: false
-
-backend-host: 'ws://127.0.0.1:62233'
 
 payment:
   default-method: alipay
@@ -112,8 +110,8 @@ rawEventId
 ### 常见故障
 
 - WebShopX 找不到支付 provider：确认同时安装 WebShopX 和 WSXPay，且日志中出现 `已注册 WebShopXPaymentApi provider: webshopx-payments`。
-- 下单返回 `PROVIDER_UNAVAILABLE`：确认 `backend-host` 已连接，或使用 `with-backend` 构建并确认内嵌后端已启动。
-- 支付方式不可用：确认 `payment.enable.alipay/wechat/paypal` 和后端 `config.json` 中对应平台配置均已启用。
+- 下单返回 `PROVIDER_UNAVAILABLE`：确认安装的是 `with-backend` 构建，且内嵌后端配置可以正常加载。
+- 支付方式不可用：确认 `payment.enable.alipay/wechat/paypal` 和 `backend/config.json` 中对应平台配置均已启用。
 - 补单查不到订单：确认 `wsxpay-orders.yml` 未被删除，且 WebShopX 传入的是同一笔 `merchantOrderId`。
 - 默认命令无法充值或购买：这是预期行为。WSXPay 默认只作为 WebShopX 支付 provider；如需临时启用旧业务，可将 `legacy-business.enabled` 改为 `true`。
 

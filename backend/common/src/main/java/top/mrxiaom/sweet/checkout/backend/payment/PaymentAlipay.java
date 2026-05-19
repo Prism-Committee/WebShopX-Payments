@@ -16,6 +16,7 @@ import com.google.gson.JsonObject;
 import top.mrxiaom.sweet.checkout.backend.AbstractPaymentServer;
 import top.mrxiaom.sweet.checkout.backend.Configuration;
 import top.mrxiaom.sweet.checkout.backend.data.ClientInfo;
+import top.mrxiaom.sweet.checkout.backend.util.ProxySupport;
 import top.mrxiaom.sweet.checkout.packets.plugin.PacketPluginRequestOrder;
 
 import java.time.LocalDateTime;
@@ -84,7 +85,11 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
 
             request.setBizModel(model);
 
-            AlipayTradePrecreateResponse response = alipayClient.execute(request);
+            AlipayTradePrecreateResponse response = ProxySupport.call(
+                    config.resolveProxy(config.getAlipayFaceToFace().getProxy()),
+                    server.getLogger(),
+                    () -> alipayClient.execute(request)
+            );
 
             if (config.isDebug()) {
                 server.getLogger().info("[DEBUG] 支付宝 订单码支付 下单结果: {}", response);
@@ -109,7 +114,7 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
                 server.getLogger().warn("支付宝 订单码支付 调用失败 {}, {} {}", response.getMsg(), response.getSubCode(), response.getSubMsg());
                 return new PacketPluginRequestOrder.Response("payment.internal-error");
             }
-        } catch (AlipayApiException e) {
+        } catch (Exception e) {
             client.removeOrder(orderId);
             server.getLogger().warn("支付宝 订单码支付 API执行错误", e);
             return new PacketPluginRequestOrder.Response("payment.internal-error");
@@ -176,7 +181,11 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
             model.setEndTime(LocalDateTime.now().format(POLLING_FORMAT));
 
             request.setBizModel(model);
-            AlipayDataBillSellQueryResponse response = alipayClient.execute(request);
+            AlipayDataBillSellQueryResponse response = ProxySupport.call(
+                    config.resolveProxy(config.getHook().getAlipay().getProxy()),
+                    server.getLogger(),
+                    () -> alipayClient.execute(request)
+            );
 
             if (config.isDebug()) {
                 server.getLogger().info("[DEBUG] 支付宝 Hook 检查结果: {}", response);
@@ -203,7 +212,7 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
             } else {
                 server.getLogger().warn("支付宝 Hook 检查订单失败 {}, {} {}，查询的订单号 {} ({})\n    {}", response.getMsg(), response.getSubCode(), response.getSubMsg(), orderId, price, response.getBody());
             }
-        } catch (AlipayApiException e) {
+        } catch (Exception e) {
             server.getLogger().warn("支付宝 Hook API检查订单时执行错误", e);
         }
     }
@@ -232,7 +241,11 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
             model.setEndTime(LocalDateTime.now().format(POLLING_FORMAT));
 
             request.setBizModel(model);
-            AlipayDataBillSellQueryResponse response = alipayClient.execute(request);
+            AlipayDataBillSellQueryResponse response = ProxySupport.call(
+                    config.resolveProxy(config.getAlipayFaceToFace().getProxy()),
+                    server.getLogger(),
+                    () -> alipayClient.execute(request)
+            );
 
             if (config.isDebug()) {
                 server.getLogger().info("[DEBUG] 支付宝 轮询模式 检查结果: {}", response);
@@ -263,7 +276,7 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
             } else {
                 server.getLogger().warn("支付宝 轮询模式 检查订单失败 {}, {} {}，查询的订单号 {} ({})\n    {}", response.getMsg(), response.getSubCode(), response.getSubMsg(), orderId, randomId, response.getBody());
             }
-        } catch (AlipayApiException e) {
+        } catch (Exception e) {
             server.getLogger().warn("支付宝 轮询模式 API检查订单时执行错误", e);
         }
     }
@@ -294,7 +307,11 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
 
             request.setBizModel(model);
 
-            AlipayTradeQueryResponse response = alipayClient.execute(request);
+            AlipayTradeQueryResponse response = ProxySupport.call(
+                    config.resolveProxy(config.getAlipayFaceToFace().getProxy()),
+                    server.getLogger(),
+                    () -> alipayClient.execute(request)
+            );
 
             if (config.isDebug()) {
                 server.getLogger().info("[DEBUG] 支付宝 订单码支付 检查结果: {}", response);
@@ -328,7 +345,7 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
                 }
                 server.getLogger().warn("支付宝 订单码支付 检查订单失败 {}, {} {}，查询的订单号 {}\n    {}", response.getMsg(), response.getSubCode(), response.getSubMsg(), outTradeNo, response.getBody());
             }
-        } catch (AlipayApiException e) {
+        } catch (Exception e) {
             server.getLogger().warn("支付宝 订单码支付 API检查订单时执行错误", e);
         }
     }
@@ -341,7 +358,11 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
             AlipayTradeCloseModel model = new AlipayTradeCloseModel();
             model.setOutTradeNo(outTradeNo);
             request.setBizModel(model);
-            AlipayTradeCloseResponse response = alipayClient.execute(request);
+            AlipayTradeCloseResponse response = ProxySupport.call(
+                    config.resolveProxy(config.getAlipayFaceToFace().getProxy()),
+                    server.getLogger(),
+                    () -> alipayClient.execute(request)
+            );
             if (config.isDebug()) {
                 server.getLogger().info("[DEBUG] 支付宝 订单码支付 关闭订单结果: {}", response);
             }
@@ -350,7 +371,7 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
                     server.getLogger().warn("支付宝 订单码支付 关闭订单失败 {}, {} {}，要关闭的订单号 {}\n    {}", response.getMsg(), response.getSubCode(), response.getSubMsg(), outTradeNo, response.getBody());
                 }
             }
-        } catch (AlipayApiException e) {
+        } catch (Exception e) {
             server.getLogger().warn("支付宝 订单码支付 API关闭交易时执行错误", e);
         }
     }
