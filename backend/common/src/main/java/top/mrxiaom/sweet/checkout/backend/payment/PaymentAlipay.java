@@ -16,8 +16,6 @@ import com.google.gson.JsonObject;
 import top.mrxiaom.sweet.checkout.backend.AbstractPaymentServer;
 import top.mrxiaom.sweet.checkout.backend.Configuration;
 import top.mrxiaom.sweet.checkout.backend.data.ClientInfo;
-import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentCancel;
-import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentConfirm;
 import top.mrxiaom.sweet.checkout.packets.plugin.PacketPluginRequestOrder;
 
 import java.time.LocalDateTime;
@@ -199,7 +197,7 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
                     String money = item.getTotalAmount();
                     client.removeOrder(order);
                     server.getLogger().info("[收款] 从支付宝 Hook 收款，来自 {} 的 ￥{}", otherAccount, money);
-                    server.send(client, new PacketBackendPaymentConfirm(orderId, money));
+                    server.sendPaymentSuccess(client, order, money);
                     moneyLocked.remove(price);
                 }
             } else {
@@ -256,10 +254,10 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
                     client.removeOrder(order);
                     if (order.getMoney().equals(money)) {
                         server.getLogger().info("[收款] 从支付宝 轮询模式 收款，来自 {} 的 ￥{}", otherAccount, money);
-                        server.send(client, new PacketBackendPaymentConfirm(orderId, money));
+                        server.sendPaymentSuccess(client, order, money);
                     } else {
                         server.getLogger().warn("[收款] 从支付宝 轮询模式 收款，来自 {} 的 ￥{}，但支付的金额不正确，自动取消订单", otherAccount, money);
-                        server.send(client, new PacketBackendPaymentCancel(orderId, "payment.cancel.not-the-agreed-price"));
+                        server.sendPaymentCancel(client, order, "payment.cancel.not-the-agreed-price");
                     }
                 }
             } else {
@@ -308,7 +306,7 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
                         break;
                     case "TRADE_CLOSED": // 超时未付款，交易关闭
                         client.removeOrder(order);
-                        server.send(client, new PacketBackendPaymentCancel(orderId, "payment.timeout"));
+                        server.sendPaymentCancel(client, order, "payment.timeout");
                         break;
                     case "TRADE_SUCCESS": // 交易支付成功
                     case "TRADE_FINISHED": {// 交易结束，不可退款
@@ -317,7 +315,7 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
                         String buyerLogonId = response.getBuyerLogonId();
                         String money = response.getReceiptAmount();
                         server.getLogger().info("[收款] 从支付宝 订单码支付 收款，来自 {} 的 ￥{}", buyerLogonId, money);
-                        server.send(client, new PacketBackendPaymentConfirm(orderId, money));
+                        server.sendPaymentSuccess(client, order, money);
                         break;
                     }
                 }

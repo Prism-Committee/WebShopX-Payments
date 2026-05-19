@@ -6,8 +6,6 @@ import io.github.eealba.payper.orders.v2.model.*;
 import top.mrxiaom.sweet.checkout.backend.AbstractPaymentServer;
 import top.mrxiaom.sweet.checkout.backend.Configuration;
 import top.mrxiaom.sweet.checkout.backend.data.ClientInfo;
-import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentCancel;
-import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentConfirm;
 import top.mrxiaom.sweet.checkout.packets.plugin.PacketPluginRequestOrder;
 
 import java.util.Collections;
@@ -34,7 +32,7 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
                             .purchaseUnits(Collections.singletonList(PurchaseUnitRequest.builder()
                                     // 设置金额
                                     .amount(AmountWithBreakdown.builder()
-                                            .value("1.00")
+                                            .value(packet.getPrice())
                                             .currencyCode(CurrencyCode.CNY)
                                             .build())
                                     .build()))
@@ -49,7 +47,7 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
             }
             String url = createdOrder.links().get(0).href();
 
-            ClientInfo.Order<C> order = client.createOrder(orderId, "alipay", packet.getPlayerName(), packet.getPrice());
+            ClientInfo.Order<C> order = client.createOrder(orderId, "paypal", packet.getPlayerName(), packet.getPrice());
             String outTradeNo = createdOrder.id();
             order.setCancelAction(() -> cancelOrder(outTradeNo));
             // 轮询检查是否交易成功
@@ -101,7 +99,7 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
                 // 订单中的所有采购单位都将作废。
                 case VOIDED:
                     client.removeOrder(order);
-                    server.send(client, new PacketBackendPaymentCancel(orderId, "payment.voided"));
+                    server.sendPaymentCancel(client, order, "payment.voided");
                     break;
                 // 订单意图已完成，并创建了付款资源。
                 // 为了避免麻烦，只添加一个付款单位，无需进行额外检查
@@ -110,7 +108,7 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
                     if (purchaseUnits.isEmpty()) {
                         // 玩家未完成采购单位，取消订单并提示玩家联系管理员
                         client.removeOrder(order);
-                        server.send(client, new PacketBackendPaymentCancel(orderId, "payment.not-purchase-all"));
+                        server.sendPaymentCancel(client, order, "payment.not-purchase-all");
                         break;
                     }
                     AmountWithBreakdown amount = purchaseUnits.get(0).amount();
@@ -118,8 +116,8 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
 
                     String buyerFullName = response.payer().name().fullName();
                     String money = amount.value();
-                    server.getLogger().info("[收款] 从支付宝 订单码支付 收款，来自 {} 的 ￥{}", buyerFullName, money);
-                    server.send(client, new PacketBackendPaymentConfirm(orderId, money));
+                    server.getLogger().info("[收款] 从 PayPal 收款，来自 {} 的 ￥{}", buyerFullName, money);
+                    server.sendPaymentSuccess(client, order, money);
                     break;
                 // 订单需要付款人执行作（e.g. 3DS 身份验证）。
                 // 将付款人重定向到在授权或捕获订单之前作为响应的一部分返回的“rel”：“payer-action”HATEOAS 链接。

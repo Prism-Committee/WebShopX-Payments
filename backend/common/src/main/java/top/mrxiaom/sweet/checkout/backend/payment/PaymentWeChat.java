@@ -9,8 +9,6 @@ import top.mrxiaom.sweet.checkout.backend.AbstractPaymentServer;
 import top.mrxiaom.sweet.checkout.backend.Configuration;
 import top.mrxiaom.sweet.checkout.backend.data.ClientInfo;
 import top.mrxiaom.sweet.checkout.backend.util.Util;
-import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentCancel;
-import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentConfirm;
 import top.mrxiaom.sweet.checkout.packets.plugin.PacketPluginRequestOrder;
 
 import java.io.File;
@@ -147,12 +145,12 @@ public class PaymentWeChat<C extends ClientInfo<C>> {
                     money = order.getMoney();
                 }
                 server.getLogger().info("[收款] 从微信Native收款，来自 {} 的 ￥{}", openId, money);
-                server.send(client, new PacketBackendPaymentConfirm(orderId, money));
+                server.sendPaymentSuccess(client, order, money);
                 break;
             case "REFUND": // 转入退款
             case "CLOSED": // 已关闭
                 client.removeOrder(order);
-                server.send(client, new PacketBackendPaymentCancel(orderId, "payment.native." + response.tradeState.toLowerCase()));
+                server.sendPaymentCancel(client, order, "payment.native." + response.tradeState.toLowerCase());
                 break;
             case "NOTPAY": // 未支付，忽略
                 break;

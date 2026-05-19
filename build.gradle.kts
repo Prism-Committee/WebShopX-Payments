@@ -5,7 +5,7 @@ plugins {
     id("com.github.gmazzo.buildconfig") version "5.6.7" apply false
 }
 allprojects {
-    group = "top.mrxiaom.sweet.checkout"
+    group = "com.webshopx.payments"
     version = "1.0.11"
 }
 subprojects {

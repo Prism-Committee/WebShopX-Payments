@@ -1,8 +1,9 @@
-name: SweetCheckout
+name: WebShopX-Payments
 version: '${version}'
 main: top.mrxiaom.sweet.checkout.SweetCheckout
 api-version: 1.13
 softdepend:
+  - WebShopX
   - PlaceholderAPI
   - SweetPlayerMarket
 authors: [ MrXiaoM ]
@@ -10,5 +11,5 @@ folia-supported: true
 # PluginBase Libraries ${libraries_config}
 commands:
   sweetcheckout:
-    description: 'The main command of SweetCheckout'
-    aliases: [ checkout, cz ]
+    description: 'The compatibility command of WebShopX-Payments'
+    aliases: [ wsxpay, checkout, cz ]

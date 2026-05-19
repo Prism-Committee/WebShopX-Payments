@@ -13,6 +13,8 @@ dependencies {
         base.library(lib)
     }
     base.collectPluginHolders()
+    val webshopxApiClasses = rootProject.file("../WebShopX/build/classes/java/main")
+    compileOnly(files(webshopxApiClasses))
     compileOnly("com.github.MrXiaoM:SweetPlayerMarket:1.0.14")
     compileOnly(project(":plugin:nms"))
     compileOnly(project(":packets"))

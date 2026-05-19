@@ -1,4 +1,4 @@
-rootProject.name = "SweetCheckout"
+rootProject.name = "WebShopX-Payments"
 
 include(":backend")
 include(":backend:common")

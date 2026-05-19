@@ -54,6 +54,7 @@ public class CommandMain extends AbstractModule implements CommandExecutor, TabC
     private int pointsLimitRound;
     private int statsTop;
     private boolean allowIncreasing;
+    private boolean legacyBusiness;
 
     public CommandMain(PluginCommon plugin) {
         super(plugin);
@@ -68,6 +69,7 @@ public class CommandMain extends AbstractModule implements CommandExecutor, TabC
         useAlipay = config.getBoolean("payment.enable.alipay");
         usePaypal = config.getBoolean("payment.enable.paypal");
         paymentTimeout = config.getInt("payment.timeout");
+        legacyBusiness = config.getBoolean("legacy-business.enabled", false);
 
         allowIncreasing = config.getBoolean("payment.allow-increasing", false);
 
@@ -95,6 +97,12 @@ public class CommandMain extends AbstractModule implements CommandExecutor, TabC
     @Override
     @SuppressWarnings({"deprecation"})
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
+        if (!legacyBusiness && args.length >= 1 && isLegacyBusinessCommand(args[0])) {
+            return (sender.isOp()
+                    ? Messages.commands__help__admin
+                    : Messages.commands__help__normal
+            ).tm(sender);
+        }
         if (sender instanceof Player) {
             Player player = (Player) sender;
             if (args.length >= 3 && "points".equalsIgnoreCase(args[0]) && player.hasPermission("sweet.checkout.points")) {
@@ -543,17 +551,21 @@ public class CommandMain extends AbstractModule implements CommandExecutor, TabC
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
             List<String> list = new ArrayList<>();
-            if (sender.hasPermission("sweet.checkout.points")) list.add("points");
-            list.add("buy");
-            if (sender.hasPermission("sweet.checkout.check")) list.add("check");
-            if (sender.hasPermission("sweet.checkout.stats")) list.add("stats");
-            if (sender.hasPermission("sweet.checkout.rank")) list.add("rank");
+            if (legacyBusiness) {
+                if (sender.hasPermission("sweet.checkout.points")) list.add("points");
+                list.add("buy");
+                if (sender.hasPermission("sweet.checkout.check")) list.add("check");
+                if (sender.hasPermission("sweet.checkout.stats")) list.add("stats");
+                if (sender.hasPermission("sweet.checkout.rank")) list.add("rank");
+            }
             if (sender.isOp()) {
-                list.add("log");
+                if (legacyBusiness) {
+                    list.add("log");
+                    list.add("reset");
+                    list.add("clear");
+                }
                 list.add("map");
                 list.add("qrcode");
-                list.add("reset");
-                list.add("clear");
                 list.add("reload");
             }
             return list;
@@ -651,6 +663,17 @@ public class CommandMain extends AbstractModule implements CommandExecutor, TabC
         if (text.equals("true") || text.equals("yes")) return true;
         if (text.equals("false") || text.equals("no")) return false;
         return def;
+    }
+
+    private static boolean isLegacyBusinessCommand(String command) {
+        return "points".equalsIgnoreCase(command)
+                || "buy".equalsIgnoreCase(command)
+                || "check".equalsIgnoreCase(command)
+                || "stats".equalsIgnoreCase(command)
+                || "rank".equalsIgnoreCase(command)
+                || "log".equalsIgnoreCase(command)
+                || "reset".equalsIgnoreCase(command)
+                || "clear".equalsIgnoreCase(command);
     }
 
     public static CommandMain inst() {

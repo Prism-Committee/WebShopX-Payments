@@ -12,14 +12,17 @@ import top.mrxiaom.pluginbase.utils.Pair;
 import top.mrxiaom.sweet.checkout.CancelReasons;
 import top.mrxiaom.sweet.checkout.Messages;
 import top.mrxiaom.sweet.checkout.PluginCommon;
+import top.mrxiaom.sweet.checkout.api.PaymentEventBridge;
 import top.mrxiaom.sweet.checkout.api.PaymentClient;
 import top.mrxiaom.sweet.checkout.func.entry.PaymentInfo;
 import top.mrxiaom.sweet.checkout.packets.PacketSerializer;
+import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentEvent;
 import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentCancel;
 import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentConfirm;
 import top.mrxiaom.sweet.checkout.packets.common.IPacket;
 import top.mrxiaom.sweet.checkout.packets.common.NoResponse;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -31,6 +34,7 @@ public class PaymentAPI extends AbstractModule {
     @SuppressWarnings({"deprecation"}) // 兼容旧版本 gson
     private final JsonParser parser = new JsonParser();
     private final Map<Long, Consumer> responseMap = new HashMap<>();
+    private final Map<Long, Consumer> directResponseMap = new HashMap<>();
     private final Map<String, Consumer> eventMap = new HashMap<>();
     private final String userAgent;
     private PaymentClient client;
@@ -40,6 +44,7 @@ public class PaymentAPI extends AbstractModule {
         userAgent = "SweetCheckout/" + plugin.getDescription().getVersion() + " Minecraft/" + MinecraftVersion.getVersion().name();
         registerListener(PacketBackendPaymentConfirm.class, this::onReceivePaymentConfirm);
         registerListener(PacketBackendPaymentCancel.class, this::onReceivePaymentCancel);
+        registerListener(PacketBackendPaymentEvent.class, this::onReceivePaymentEvent);
     }
 
     public String getUserAgent() {
@@ -55,15 +60,36 @@ public class PaymentAPI extends AbstractModule {
     }
 
     public <T extends IPacket> boolean send(IPacket<T> packet, @Nullable Consumer<T> resp) {
+        return send(packet, resp, false);
+    }
+
+    public <T extends IPacket> CompletableFuture<T> sendFuture(IPacket<T> packet) {
+        CompletableFuture<T> future = new CompletableFuture<>();
+        boolean sent = send(packet, future::complete, true);
+        if (!sent) {
+            future.completeExceptionally(new IllegalStateException("backend-not-connected"));
+        }
+        return future;
+    }
+
+    public <T extends IPacket> boolean send(IPacket<T> packet, @Nullable Consumer<T> resp, boolean directCallback) {
         JsonObject json = PacketSerializer.serialize(packet);
         Class<T> respType = packet.getResponsePacket();
         Long echo = (respType == null || resp == null) ? null : this.echo++;
         if (echo != null) {
             json.addProperty("echo", echo);
-            responseMap.put(echo, resp);
+            if (directCallback) {
+                directResponseMap.put(echo, resp);
+            } else {
+                responseMap.put(echo, resp);
+            }
         }
         if (!isConnected()) {
             warn("请求失败: 未连接到后端");
+            if (echo != null) {
+                directResponseMap.remove(echo);
+                responseMap.remove(echo);
+            }
             return false;
         }
         plugin.getScheduler().runTaskAsync(() -> client.send(json.toString()));
@@ -98,9 +124,17 @@ public class PaymentAPI extends AbstractModule {
     @SuppressWarnings({"unchecked"})
     public void onMessage(@NotNull IPacket packet, @Nullable Long echo) {
         if (echo != null) {
-            Consumer resp = responseMap.remove(echo);
+            Consumer resp = directResponseMap.remove(echo);
             if (resp != null) try {
-                plugin.getScheduler().runTask(() -> resp.accept(packet));
+                resp.accept(packet);
+            } catch (Throwable t) {
+                warn("接收数据包时出现错误", t);
+            }
+            if (resp != null) return;
+            resp = responseMap.remove(echo);
+            if (resp != null) try {
+                Consumer response = resp;
+                plugin.getScheduler().runTask(() -> response.accept(packet));
             } catch (Throwable t) {
                 warn("接收数据包时出现错误", t);
             }
@@ -113,11 +147,19 @@ public class PaymentAPI extends AbstractModule {
     }
 
     private void onReceivePaymentConfirm(PacketBackendPaymentConfirm packet) {
+        PaymentEventBridge bridge = plugin.getPaymentEventBridge();
+        if (bridge != null) {
+            bridge.handleBackendPaymentConfirm(packet.getOrderId(), packet.getMoney());
+        }
         PaymentsAndQRCodeManager manager = PaymentsAndQRCodeManager.inst();
         manager.markDone(packet.getOrderId(), packet.getMoney());
     }
 
     private void onReceivePaymentCancel(PacketBackendPaymentCancel packet) {
+        PaymentEventBridge bridge = plugin.getPaymentEventBridge();
+        if (bridge != null) {
+            bridge.handleBackendPaymentCancel(packet.getOrderId(), packet.getReason());
+        }
         PaymentsAndQRCodeManager manager = PaymentsAndQRCodeManager.inst();
         PaymentInfo info = manager.remove(packet.getOrderId());
         if (info == null) {
@@ -129,6 +171,13 @@ public class PaymentAPI extends AbstractModule {
             CancelReasons reason = CancelReasons.fromString(packet.getReason());
             String reasonString = reason.str(Pair.of("%reason%", packet.getReason()));
             Messages.cancelled.tm(info.player, Pair.of("%reason%", reasonString));
+        }
+    }
+
+    private void onReceivePaymentEvent(PacketBackendPaymentEvent packet) {
+        PaymentEventBridge bridge = plugin.getPaymentEventBridge();
+        if (bridge != null) {
+            bridge.handleBackendPaymentEvent(packet);
         }
     }
 

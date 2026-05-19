@@ -11,11 +11,17 @@ import top.mrxiaom.sweet.checkout.backend.payment.PaymentPaypal;
 import top.mrxiaom.sweet.checkout.backend.payment.PaymentWeChat;
 import top.mrxiaom.sweet.checkout.backend.util.Util;
 import top.mrxiaom.sweet.checkout.packets.PacketSerializer;
+import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentEvent;
 import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentConfirm;
+import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentCancel;
 import top.mrxiaom.sweet.checkout.packets.common.IPacket;
 import top.mrxiaom.sweet.checkout.packets.plugin.PacketPluginCancelOrder;
+import top.mrxiaom.sweet.checkout.packets.plugin.PacketPluginCreatePayment;
+import top.mrxiaom.sweet.checkout.packets.plugin.PacketPluginQueryPayment;
 import top.mrxiaom.sweet.checkout.packets.plugin.PacketPluginRequestOrder;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
@@ -36,6 +42,8 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
     public AbstractPaymentServer(Logger logger) {
         this.logger = logger;
         this.registerExecutor(PacketPluginRequestOrder.class, this::handleRequest);
+        this.registerExecutor(PacketPluginCreatePayment.class, this::handleCreatePayment);
+        this.registerExecutor(PacketPluginQueryPayment.class, this::handleQueryPayment);
         this.registerExecutor(PacketPluginCancelOrder.class, this::handleCancel);
     }
 
@@ -137,6 +145,103 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
         return new PacketPluginRequestOrder.Response("payment.type-unknown");
     }
 
+    private PacketPluginCreatePayment.Response handleCreatePayment(PacketPluginCreatePayment packet, ClientInfo client) {
+        if (packet.getMerchantOrderId() == null || packet.getMerchantOrderId().trim().isEmpty()) {
+            return new PacketPluginCreatePayment.Response("payment.invalid-request");
+        }
+        if (packet.getAmountMinor() <= 0L) {
+            return new PacketPluginCreatePayment.Response("payment.invalid-amount");
+        }
+        String method = normalizeMethod(packet.getMethod());
+        if (method == null) {
+            return new PacketPluginCreatePayment.Response("payment.type-unknown");
+        }
+        String playerName = "wsxpay:" + packet.getMerchantOrderId();
+        PacketPluginRequestOrder request = new PacketPluginRequestOrder(
+                playerName,
+                method,
+                packet.getSubject() == null || packet.getSubject().trim().isEmpty() ? packet.getMerchantOrderId() : packet.getSubject(),
+                amountMinorToPrice(packet.getAmountMinor()),
+                false
+        );
+        PacketPluginRequestOrder.Response response = handleRequest(request, client);
+        if (response.getError() != null && !response.getError().isEmpty()) {
+            return new PacketPluginCreatePayment.Response(response.getError());
+        }
+        long actualAmountMinor = priceToAmountMinor(response.getMoney());
+        Map<String, String> extra = new LinkedHashMap<>();
+        extra.put("backendSubType", response.getSubType());
+        String paymentUrl = response.getPaymentUrl();
+        String qrCodeUrl = "paypal".equals(method) ? null : paymentUrl;
+        if ("paypal".equals(method)) {
+            qrCodeUrl = null;
+        }
+        return new PacketPluginCreatePayment.Response(
+                packet.getMerchantOrderId(),
+                response.getOrderId(),
+                paymentUrl,
+                qrCodeUrl,
+                actualAmountMinor,
+                packet.getCurrency() == null || packet.getCurrency().trim().isEmpty() ? "CNY" : packet.getCurrency(),
+                method,
+                response.getSubType(),
+                packet.getExpiresAt(),
+                extra
+        );
+    }
+
+    private PacketPluginQueryPayment.Response handleQueryPayment(PacketPluginQueryPayment packet, ClientInfo client) {
+        ClientInfo.Order order = null;
+        if (packet.getProviderOrderId() != null && !packet.getProviderOrderId().trim().isEmpty()) {
+            order = client.getOrder(packet.getProviderOrderId());
+        }
+        if (order == null && packet.getMerchantOrderId() != null && !packet.getMerchantOrderId().trim().isEmpty()) {
+            order = client.getOrderByPlayer("wsxpay:" + packet.getMerchantOrderId());
+        }
+        if (order == null) {
+            return new PacketPluginQueryPayment.Response("payment.cancel.not-found");
+        }
+        String merchantOrderId = packet.getMerchantOrderId();
+        if ((merchantOrderId == null || merchantOrderId.trim().isEmpty()) && order.getPlayerName().startsWith("wsxpay:")) {
+            merchantOrderId = order.getPlayerName().substring("wsxpay:".length());
+        }
+        return new PacketPluginQueryPayment.Response(
+                merchantOrderId,
+                order.getId(),
+                "PAYING",
+                order.getType(),
+                null,
+                null,
+                null,
+                priceToAmountMinor(order.getMoney()),
+                "CNY",
+                0L,
+                0L,
+                Collections.emptyMap()
+        );
+    }
+
+    private static String normalizeMethod(String method) {
+        if (method == null) return null;
+        String normalized = method.trim().toLowerCase(Locale.ROOT);
+        if (normalized.equals("wechat") || normalized.equals("alipay") || normalized.equals("paypal")) {
+            return normalized;
+        }
+        return null;
+    }
+
+    private static String amountMinorToPrice(long amountMinor) {
+        return BigDecimal.valueOf(amountMinor, 2).setScale(2, RoundingMode.UNNECESSARY).toPlainString();
+    }
+
+    private static long priceToAmountMinor(String price) {
+        try {
+            return new BigDecimal(price).movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValue();
+        } catch (Throwable ignored) {
+            return 0L;
+        }
+    }
+
     private PacketPluginCancelOrder.Response handleCancel(PacketPluginCancelOrder packet, ClientInfo client) {
         // 取消订单
         ClientInfo.Order order = client.removeOrder(packet.getOrderId());
@@ -166,6 +271,51 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
     }
 
     public abstract void send(@NotNull C client, @NotNull IPacket packet, @Nullable Long echo);
+
+    public void sendPaymentSuccess(@NotNull C client, @NotNull ClientInfo.Order<C> order, @NotNull String money) {
+        Map<String, String> extra = new LinkedHashMap<>();
+        extra.put("source", "backend");
+        send(client, new PacketBackendPaymentEvent(
+                null,
+                order.getId(),
+                "SUCCESS",
+                priceToAmountMinor(money),
+                "CNY",
+                order.getType(),
+                null,
+                System.currentTimeMillis(),
+                order.getId() + ":SUCCESS",
+                extra
+        ));
+        send(client, new PacketBackendPaymentConfirm(order.getId(), money));
+    }
+
+    public void sendPaymentCancel(@NotNull C client, @NotNull ClientInfo.Order<C> order, @NotNull String reason) {
+        Map<String, String> extra = new LinkedHashMap<>();
+        extra.put("source", "backend");
+        extra.put("reason", reason);
+        send(client, new PacketBackendPaymentEvent(
+                null,
+                order.getId(),
+                statusFromCancelReason(reason),
+                priceToAmountMinor(order.getMoney()),
+                "CNY",
+                order.getType(),
+                null,
+                0L,
+                order.getId() + ":" + reason,
+                extra
+        ));
+        send(client, new PacketBackendPaymentCancel(order.getId(), reason));
+    }
+
+    private static String statusFromCancelReason(String reason) {
+        String lower = reason == null ? "" : reason.toLowerCase(Locale.ROOT);
+        if (lower.contains("timeout") || lower.contains("expired")) return "EXPIRED";
+        if (lower.contains("cancel") || lower.contains("closed") || lower.contains("voided")) return "CANCELLED";
+        if (lower.contains("failed") || lower.contains("error")) return "FAILED";
+        return "UNKNOWN";
+    }
 
     public void onMessage(C client, String s) {
         JsonObject json = JsonParser.parseString(s).getAsJsonObject();
@@ -216,7 +366,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
             }
             logger.info("[Hook] 玩家 {} 的 ￥{} 订单已付款完成，回调订单结果", order.getPlayerName(), money);
             order.remove();
-            send(client, new PacketBackendPaymentConfirm(order.getId(), money));
+            sendPaymentSuccess(client, order, money);
         }
     }
 

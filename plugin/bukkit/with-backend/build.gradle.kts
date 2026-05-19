@@ -72,7 +72,7 @@ tasks {
     val copyTask = this.register<Copy>("copyBuildArtifact") {
         dependsOn(shadowJar)
         from(shadowJar.get().outputs)
-        rename { "SweetCheckout-bukkit-with-backend-$version.jar" }
+        rename { "WebShopX-Payments-bukkit-with-backend-$version.jar" }
         into(rootProject.file("out"))
     }
     build {

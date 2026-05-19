@@ -4,6 +4,7 @@ import com.google.common.collect.Lists;
 import de.tr7zw.changeme.nbtapi.utils.MinecraftVersion;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.ServicePriority;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import top.mrxiaom.pluginbase.BukkitPlugin;
@@ -18,6 +19,7 @@ import top.mrxiaom.pluginbase.utils.inventory.InventoryFactory;
 import top.mrxiaom.pluginbase.utils.item.ItemEditor;
 import top.mrxiaom.pluginbase.utils.scheduler.FoliaLibScheduler;
 import top.mrxiaom.sweet.checkout.api.PaymentClient;
+import top.mrxiaom.sweet.checkout.api.PaymentEventBridge;
 import top.mrxiaom.sweet.checkout.database.BuyCountDatabase;
 import top.mrxiaom.sweet.checkout.database.TradeDatabase;
 import top.mrxiaom.sweet.checkout.func.PaymentAPI;
@@ -76,6 +78,8 @@ public abstract class PluginCommon extends BukkitPlugin {
     public boolean processingLogs;
     private TradeDatabase tradeDatabase;
     private BuyCountDatabase buyCountDatabase;
+    private PaymentEventBridge paymentEventBridge;
+    private Object wsxPaymentService;
 
     public TradeDatabase getTradeDatabase() {
         return tradeDatabase;
@@ -83,6 +87,11 @@ public abstract class PluginCommon extends BukkitPlugin {
 
     public BuyCountDatabase getBuyCountDatabase() {
         return buyCountDatabase;
+    }
+
+    @Nullable
+    public PaymentEventBridge getPaymentEventBridge() {
+        return paymentEventBridge;
     }
 
     public abstract PaymentClient handlePaymentReload(PaymentAPI parent, @Nullable String url) throws URISyntaxException;
@@ -121,7 +130,8 @@ public abstract class PluginCommon extends BukkitPlugin {
 
     @Override
     protected void afterEnable() {
-        if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+        if (getConfig().getBoolean("legacy-business.placeholderapi", false)
+                && Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
             Placeholders placeholders;
             try {
                 placeholders = new PlaceholdersPersist(this);
@@ -132,6 +142,52 @@ public abstract class PluginCommon extends BukkitPlugin {
             placeholders.register();
         }
         getLogger().info("SweetCheckout 加载完毕");
+        registerWsxPaymentApi();
+    }
+
+    @Override
+    protected void afterDisable() {
+        unregisterWsxPaymentApi();
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void registerWsxPaymentApi() {
+        if (wsxPaymentService != null) return;
+        try {
+            Class apiClass = Class.forName("com.webshopx.payment.api.WebShopXPaymentApi");
+            Object service = Class.forName("com.webshopx.payments.WsxPaymentApi")
+                    .getConstructor(PluginCommon.class)
+                    .newInstance(this);
+            if (!(service instanceof PaymentEventBridge)) {
+                throw new IllegalStateException("WsxPaymentApi does not implement PaymentEventBridge");
+            }
+            getServer().getServicesManager().register(apiClass, service, this, ServicePriority.Normal);
+            wsxPaymentService = service;
+            paymentEventBridge = (PaymentEventBridge) service;
+            info("已注册 WebShopXPaymentApi provider: webshopx-payments");
+        } catch (ClassNotFoundException ignored) {
+            info("未发现 WebShopXPaymentApi，跳过 WSXPay provider 注册");
+        } catch (Throwable t) {
+            warn("注册 WebShopXPaymentApi provider 时出现异常", t);
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void unregisterWsxPaymentApi() {
+        Object service = wsxPaymentService;
+        if (service == null) return;
+        try {
+            Class apiClass = Class.forName("com.webshopx.payment.api.WebShopXPaymentApi");
+            getServer().getServicesManager().unregister(apiClass, service);
+        } catch (ClassNotFoundException ignored) {
+        } catch (Throwable t) {
+            warn("注销 WebShopXPaymentApi provider 时出现异常", t);
+        }
+        if (paymentEventBridge != null) {
+            paymentEventBridge.close();
+        }
+        paymentEventBridge = null;
+        wsxPaymentService = null;
     }
 
     @SafeVarargs

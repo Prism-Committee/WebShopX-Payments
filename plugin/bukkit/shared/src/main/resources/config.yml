@@ -2,6 +2,15 @@
 # SweetCheckout 配置文件
 ########################
 
+# WebShopXPaymentApi provider 标识
+provider-id: webshopx-payments
+
+# 旧 SweetCheckout 内置业务默认关闭。
+# WSXPay 作为 WebShopXPaymentApi provider 时，不应自行处理商品发货、点券入账、排行或 PAPI 变量。
+legacy-business:
+  enabled: false
+  placeholderapi: false
+
 # 后端地址，请配置好后端，再取消下面这一行的注释
 # 如果你使用的是自带后端的插件构建，可以忽略该选项
 # backend-host: 'ws://127.0.0.1:62233'
@@ -42,6 +51,10 @@ map-item:
 
 # 支付设置
 payment:
+  # WebShopX 未指定支付方式时使用的默认方式
+  default-method: alipay
+  # WebShopXPaymentApi 同步等待后端响应的超时时间 (秒)
+  api-timeout-seconds: 15
   enable:
     # 使用启用微信支付
     wechat: true
