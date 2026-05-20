@@ -15,6 +15,8 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import com.webshopx.payments.PluginCommon;
 import com.webshopx.payments.api.PaymentEventBridge;
 import com.webshopx.payments.func.PaymentAPI;
+import com.webshopx.payments.libs.qrcode.QRCode;
+import com.webshopx.payments.libs.qrcode.enums.ErrorCorrectionLevel;
 import com.webshopx.payments.packets.backend.PacketBackendPaymentEvent;
 import com.webshopx.payments.packets.plugin.PacketPluginCreatePayment;
 import com.webshopx.payments.packets.plugin.PacketPluginQueryPayment;
@@ -71,6 +73,15 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
         if (isMethodEnabled("mercadopago")) methods.add(PaymentMethod.CUSTOM);
         if (!methods.isEmpty()) methods.add(PaymentMethod.AUTO);
         return Collections.unmodifiableSet(methods);
+    }
+
+    public Set<String> supportedCurrencies() {
+        Set<String> currencies = new java.util.LinkedHashSet<>();
+        if (isMethodEnabled("alipay") || isMethodEnabled("wechat")) currencies.add("CNY");
+        if (isMethodEnabled("paypal")) currencies.add(configCurrency("methods.paypal.currency", "USD"));
+        if (isMethodEnabled("mercadopago")) currencies.add(configCurrency("methods.mercadopago.currency", "BRL"));
+        currencies.removeIf(value -> value == null || value.trim().isEmpty());
+        return Collections.unmodifiableSet(currencies);
     }
 
     @Override
@@ -133,7 +144,7 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
             record.currency = normalizeCurrency(response.getCurrency());
             if (record.currency == null) record.currency = currency;
             record.payUrl = response.getPaymentUrl();
-            record.qrCodeUrl = response.getQrCodeUrl();
+            record.qrCodeUrl = qrCodeDataUrl(response.getQrCodeUrl(), record.method);
             record.expiresAt = response.getExpiresAt() > 0L ? Instant.ofEpochMilli(response.getExpiresAt()) : request.getExpiresAt();
             record.extra.putAll(response.getExtra());
             putOrder(record);
@@ -276,6 +287,11 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
             return plugin.getConfig().getBoolean("methods." + lower + ".enabled");
         }
         return plugin.getConfig().getBoolean("payment.enable." + lower);
+    }
+
+    private String configCurrency(String path, String fallback) {
+        String value = trimToNull(plugin.getConfig().getString(path));
+        return value == null ? fallback : value.toUpperCase(Locale.ROOT);
     }
 
     private String resolveMethodCode(PaymentMethod method, String methodCode) {
@@ -449,6 +465,46 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
     private static String normalizeCurrency(String currency) {
         String value = trimToNull(currency);
         return value == null ? null : value.toUpperCase(Locale.ROOT);
+    }
+
+    private static String qrCodeDataUrl(String qrCodeContent, PaymentMethod method) {
+        String content = trimToNull(qrCodeContent);
+        if (content == null || method == PaymentMethod.PAYPAL) {
+            return null;
+        }
+        if (content.startsWith("data:image/")) {
+            return content;
+        }
+        try {
+            QRCode qrCode = QRCode.create(content, ErrorCorrectionLevel.M);
+            int modules = qrCode.getModuleCount();
+            int quiet = 4;
+            int size = modules + quiet * 2;
+            StringBuilder svg = new StringBuilder(4096);
+            svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 ")
+                    .append(size)
+                    .append(' ')
+                    .append(size)
+                    .append("\" shape-rendering=\"crispEdges\">")
+                    .append("<rect width=\"100%\" height=\"100%\" fill=\"#fff\"/>")
+                    .append("<path fill=\"#000\" d=\"");
+            for (int row = 0; row < modules; row++) {
+                for (int col = 0; col < modules; col++) {
+                    if (qrCode.isDark(row, col)) {
+                        svg.append('M')
+                                .append(col + quiet)
+                                .append(' ')
+                                .append(row + quiet)
+                                .append("h1v1h-1z");
+                    }
+                }
+            }
+            svg.append("\"/></svg>");
+            String encoded = Base64.getEncoder().encodeToString(svg.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return "data:image/svg+xml;base64," + encoded;
+        } catch (Throwable ignored) {
+            return content;
+        }
     }
 
     private static String mapBackendError(String error) {
