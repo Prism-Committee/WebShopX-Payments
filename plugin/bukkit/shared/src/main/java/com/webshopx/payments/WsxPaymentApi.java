@@ -144,7 +144,7 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
             record.currency = normalizeCurrency(response.getCurrency());
             if (record.currency == null) record.currency = currency;
             record.payUrl = response.getPaymentUrl();
-            record.qrCodeUrl = qrCodeDataUrl(response.getQrCodeUrl(), record.method);
+            record.qrCodeUrl = qrCodeDataUrl(firstNonBlank(response.getQrCodeUrl(), response.getPaymentUrl()));
             record.expiresAt = response.getExpiresAt() > 0L ? Instant.ofEpochMilli(response.getExpiresAt()) : request.getExpiresAt();
             record.extra.putAll(response.getExtra());
             putOrder(record);
@@ -467,9 +467,9 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
         return value == null ? null : value.toUpperCase(Locale.ROOT);
     }
 
-    private static String qrCodeDataUrl(String qrCodeContent, PaymentMethod method) {
+    private static String qrCodeDataUrl(String qrCodeContent) {
         String content = trimToNull(qrCodeContent);
-        if (content == null || method == PaymentMethod.PAYPAL) {
+        if (content == null) {
             return null;
         }
         if (content.startsWith("data:image/")) {
@@ -521,6 +521,15 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
         if (value == null) return null;
         String trim = value.trim();
         return trim.isEmpty() ? null : trim;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) return null;
+        for (String value : values) {
+            String trimmed = trimToNull(value);
+            if (trimmed != null) return trimmed;
+        }
+        return null;
     }
 
     private static final class OrderRecord {
