@@ -1,4 +1,4 @@
-﻿#include "Shlwapi.h"
+#include "Shlwapi.h"
 #include "framework.h"
 #include "resource.h"
 #include <filesystem>
@@ -55,7 +55,7 @@ static int GetDllPath(wchar_t *dllPath)
     PathAppend(temp_file_path, L".temp");
     CreateDirectory(temp_file_path, NULL);
     SetFileAttributes(temp_file_path, FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN);
-    PathAppend(temp_file_path, L"SweetCheckout.Hook.WeChat.dll");
+    PathAppend(temp_file_path, L"WSXPay.Hook.WeChat.dll");
 
     if (!SaveSpyDll(temp_file_path)) {
         LOG_WARN("Failed to save DLL.");
@@ -214,7 +214,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     _In_ LPWSTR    lpCmdLine,
     _In_ int       nCmdShow)
 {
-    InitLogger("Sweet", std::filesystem::current_path().string() + "/logs/injector.log");
+    InitLogger("WSXPay", std::filesystem::current_path().string() + "/logs/injector.log");
 
     LOG_INFO("Injector window initializing...");
 

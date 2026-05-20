@@ -12,12 +12,12 @@ import com.webshopx.payment.api.PaymentStatus;
 import com.webshopx.payment.api.WebShopXPaymentApi;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
-import top.mrxiaom.sweet.checkout.PluginCommon;
-import top.mrxiaom.sweet.checkout.api.PaymentEventBridge;
-import top.mrxiaom.sweet.checkout.func.PaymentAPI;
-import top.mrxiaom.sweet.checkout.packets.backend.PacketBackendPaymentEvent;
-import top.mrxiaom.sweet.checkout.packets.plugin.PacketPluginCreatePayment;
-import top.mrxiaom.sweet.checkout.packets.plugin.PacketPluginQueryPayment;
+import com.webshopx.payments.PluginCommon;
+import com.webshopx.payments.api.PaymentEventBridge;
+import com.webshopx.payments.func.PaymentAPI;
+import com.webshopx.payments.packets.backend.PacketBackendPaymentEvent;
+import com.webshopx.payments.packets.plugin.PacketPluginCreatePayment;
+import com.webshopx.payments.packets.plugin.PacketPluginQueryPayment;
 
 import java.io.File;
 import java.io.IOException;
@@ -192,32 +192,6 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
     public void unregisterListener(String consumerId) {
         String id = trimToNull(consumerId);
         if (id != null) listeners.remove(id);
-    }
-
-    @Override
-    public void handleBackendPaymentConfirm(String providerOrderId, String money) {
-        OrderRecord record = findOrder(null, providerOrderId);
-        if (record == null) return;
-        if (record.status == PaymentStatus.SUCCESS && record.notified) return;
-        long paidMinor = priceToAmountMinor(money);
-        if (paidMinor > 0L) record.amountMinor = paidMinor;
-        record.status = PaymentStatus.SUCCESS;
-        record.paidAt = Instant.now();
-        putOrder(record);
-        saveOrders();
-        dispatchNotify(record, null);
-    }
-
-    @Override
-    public void handleBackendPaymentCancel(String providerOrderId, String reason) {
-        OrderRecord record = findOrder(null, providerOrderId);
-        if (record == null) return;
-        if (isClosed(record.status) && record.notified) return;
-        record.status = statusFromReason(reason);
-        record.extra.put("reason", reason == null ? "" : reason);
-        putOrder(record);
-        saveOrders();
-        dispatchNotify(record, null);
     }
 
     @Override

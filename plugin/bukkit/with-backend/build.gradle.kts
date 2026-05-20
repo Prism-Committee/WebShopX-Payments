@@ -7,7 +7,7 @@ plugins {
 }
 
 java.withJavadocJar()
-val shadowGroup = "top.mrxiaom.sweet.checkout.libs"
+val shadowGroup = "com.webshopx.payments.libs"
 val shadowLink = configurations.create("shadowLink")
 val base: top.mrxiaom.gradle.LibraryHelper by project.extra
 dependencies {

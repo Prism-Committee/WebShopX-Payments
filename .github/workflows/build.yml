@@ -46,7 +46,7 @@ jobs:
           mkdir Out
           cmd /c build.cmd
 
-          echo "# SweetCheckout Hook 配置文件">>Out/config.properties
+          echo "# WSXPay Hook 配置文件">>Out/config.properties
           echo "api_url=http://127.0.0.1:62233/api/hook/receive">>Out/config.properties
           echo "wechat_key=">>Out/config.properties
           echo "database_folder=auto">>Out/config.properties
@@ -58,7 +58,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SweetCheckout-Hooks
+          name: WSXPay-Hooks
           path: out/*
           if-no-files-found: error
   build-plugin-and-backend:
@@ -75,23 +75,11 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
-      - name: Build plugin and backend
-        run: ./gradlew clean build
-      - name: Upload Artifacts Backend
-        uses: actions/upload-artifact@v4
-        with:
-          name: SweetCheckout-backend
-          path: out/backend-*
-          if-no-files-found: error
+      - name: Build plugin with backend
+        run: ./gradlew clean :plugin:bukkit:with-backend:build
       - name: Upload Artifacts Plugin With Backend
         uses: actions/upload-artifact@v4
         with:
-          name: SweetCheckout-bukkit-with-backend
-          path: out/SweetCheckout-bukkit-with-backend-*
-          if-no-files-found: error
-      - name: Upload Artifacts Plugin WS
-        uses: actions/upload-artifact@v4
-        with:
-          name: SweetCheckout-bukkit-ws
-          path: out/SweetCheckout-bukkit-ws-*
+          name: WSXPay-bukkit-with-backend
+          path: out/WebShopX-Payments-bukkit-with-backend-*
           if-no-files-found: error

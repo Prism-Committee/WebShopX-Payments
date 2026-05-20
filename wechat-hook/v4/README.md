@@ -1,4 +1,4 @@
-# SweetCheckout.Hook.WeChat
+# WSXPay.Hook.WeChat
 
 这个模块基于 [echotrace](https://github.com/ycccccccy/echotrace) 开发。
 
@@ -10,7 +10,7 @@
 
 在该目录新建一个配置文件 `config.properties`，内容如下。
 ```properties
-# SweetCheckout Hook 配置文件
+# WSXPay Hook 配置文件
 api_url=http://127.0.0.1:62233/api/hook/receive
 wechat_key=
 database_folder=auto

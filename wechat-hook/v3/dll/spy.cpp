@@ -20,7 +20,7 @@ void InitSpy(LPVOID args)
     wchar_t version[16] = { 0 };
     PortPath_t *pp      = (PortPath_t *)args;
     string path = pp->path;
-    InitLogger("Sweet", path + "/logs/spy.log");
+    InitLogger("WSXPay", path + "/logs/spy.log");
     g_WeChatWinDllAddr = (UINT64)GetModuleHandle(L"WeChatWin.dll"); // 获取wechatWin模块地址
     if (g_WeChatWinDllAddr == 0) {
         LOG_ERROR("Failed to get address of module WeChatWin.dll");

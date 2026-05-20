@@ -1,4 +1,4 @@
-# SweetCheckout.Hook.WeChat
+# WSXPay.Hook.WeChat
 
 这个模块基于 [WeChatFerry](https://github.com/lich0821/WeChatFerry) 开发。
 
@@ -17,6 +17,6 @@ api_url=http://127.0.0.1:62233/api/hook/receive
 
 发布时，将以下文件一同打包发布
 
-+ `SweetCheckout.Hook.WeChat.exe`
++ `WSXPay.Hook.WeChat.exe`
 + `config.properties`
 + `LICENSE`

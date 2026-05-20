@@ -68,13 +68,13 @@ BEGIN
     BEGIN
         BLOCK "080404b0"
         BEGIN
-            VALUE "CompanyName", "SweetCheckout.Hook.WeChat"
-            VALUE "FileDescription", "SweetCheckout.Hook.WeChat"
+            VALUE "CompanyName", "WSXPay.Hook.WeChat"
+            VALUE "FileDescription", "WSXPay.Hook.WeChat"
             VALUE "FileVersion", "1.0.1.0"
-            VALUE "InternalName", "SweetCheckout.Hook.WeChat.exe"
+            VALUE "InternalName", "WSXPay.Hook.WeChat.exe"
             VALUE "LegalCopyright", "Copyright (C) MrXiaoM 2025"
-            VALUE "OriginalFilename", "SweetCheckout.Hook.WeChat.exe"
-            VALUE "ProductName", "SweetCheckout.Hook.WeChat"
+            VALUE "OriginalFilename", "WSXPay.Hook.WeChat.exe"
+            VALUE "ProductName", "WSXPay.Hook.WeChat"
             VALUE "ProductVersion", "3.9.12.17"
         END
     END

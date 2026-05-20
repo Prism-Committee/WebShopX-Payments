@@ -15,14 +15,13 @@ dependencies {
     base.collectPluginHolders()
     val webshopxApiClasses = rootProject.file("../WebShopX/build/classes/java/main")
     compileOnly(files(webshopxApiClasses))
-    compileOnly("com.github.MrXiaoM:SweetPlayerMarket:1.0.14")
     compileOnly(project(":plugin:nms"))
     compileOnly(project(":packets"))
 }
 
 buildConfig {
     className("BuildConstants")
-    packageName("top.mrxiaom.sweet.checkout")
+    packageName("com.webshopx.payments")
 
     base.doResolveLibraries()
 
