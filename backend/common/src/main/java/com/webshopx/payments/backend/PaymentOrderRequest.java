@@ -10,6 +10,11 @@ public class PaymentOrderRequest {
     private String subject;
     private String price;
     private boolean allowIncreasing;
+    private String description;
+    private String currency;
+    private String returnUrl;
+    private String notifyUrl;
+    private long expiresAt;
 
     public PaymentOrderRequest(String playerName, String method, String subject, String price, boolean allowIncreasing) {
         this.playerName = playerName;
@@ -17,6 +22,26 @@ public class PaymentOrderRequest {
         this.subject = subject;
         this.price = price;
         this.allowIncreasing = allowIncreasing;
+    }
+
+    public PaymentOrderRequest(
+            String playerName,
+            String method,
+            String subject,
+            String price,
+            boolean allowIncreasing,
+            String description,
+            String currency,
+            String returnUrl,
+            String notifyUrl,
+            long expiresAt
+    ) {
+        this(playerName, method, subject, price, allowIncreasing);
+        this.description = description;
+        this.currency = currency;
+        this.returnUrl = returnUrl;
+        this.notifyUrl = notifyUrl;
+        this.expiresAt = expiresAt;
     }
 
     public String getPlayerName() {
@@ -41,5 +66,25 @@ public class PaymentOrderRequest {
 
     public boolean isAllowIncreasing() {
         return allowIncreasing;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public String getReturnUrl() {
+        return returnUrl;
+    }
+
+    public String getNotifyUrl() {
+        return notifyUrl;
+    }
+
+    public long getExpiresAt() {
+        return expiresAt;
     }
 }

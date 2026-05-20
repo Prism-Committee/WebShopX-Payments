@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import com.webshopx.payments.backend.data.ClientInfo;
 import com.webshopx.payments.backend.data.HookReceive;
 import com.webshopx.payments.backend.payment.PaymentAlipay;
+import com.webshopx.payments.backend.payment.PaymentMercadoPago;
 import com.webshopx.payments.backend.payment.PaymentPaypal;
 import com.webshopx.payments.backend.payment.PaymentWeChat;
 import com.webshopx.payments.backend.util.Util;
@@ -35,6 +36,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
     PaymentWeChat wechat = new PaymentWeChat(this);
     PaymentAlipay alipay = new PaymentAlipay(this);
     PaymentPaypal paypal = new PaymentPaypal(this);
+    PaymentMercadoPago mercadoPago = new PaymentMercadoPago(this);
 
     public AbstractPaymentServer(Logger logger) {
         this.logger = logger;
@@ -138,6 +140,11 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
                 return paypal.handleCreateOrder(request, client, config);
             }
         }
+        if (request.getMethod().equals("mercadopago")) {
+            if (config.getMercadoPago().isEnable()) {
+                return mercadoPago.handleCreateOrder(request, client, config);
+            }
+        }
         return new PaymentOrderResponse("payment.type-unknown");
     }
 
@@ -159,7 +166,12 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
                 method,
                 packet.getSubject() == null || packet.getSubject().trim().isEmpty() ? packet.getMerchantOrderId() : packet.getSubject(),
                 amountMinorToPrice(packet.getAmountMinor()),
-                false
+                false,
+                packet.getDescription(),
+                packet.getCurrency(),
+                packet.getReturnUrl(),
+                packet.getNotifyUrl(),
+                packet.getExpiresAt()
         );
         PaymentOrderResponse response = handleOrderRequest(request, client);
         if (response.getError() != null && !response.getError().isEmpty()) {
@@ -169,8 +181,8 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
         Map<String, String> extra = new LinkedHashMap<>();
         extra.put("backendSubType", response.getSubType());
         String paymentUrl = response.getPaymentUrl();
-        String qrCodeUrl = "paypal".equals(method) ? null : paymentUrl;
-        if ("paypal".equals(method)) {
+        String qrCodeUrl = ("paypal".equals(method) || "mercadopago".equals(method)) ? null : paymentUrl;
+        if ("paypal".equals(method) || "mercadopago".equals(method)) {
             qrCodeUrl = null;
         }
         return new PacketPluginCreatePayment.Response(
@@ -179,7 +191,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
                 paymentUrl,
                 qrCodeUrl,
                 actualAmountMinor,
-                "paypal".equals(method) ? config.getPaypal().getCurrency() : "CNY",
+                currencyForMethod(method),
                 method,
                 response.getSubType(),
                 packet.getExpiresAt(),
@@ -205,6 +217,12 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
                 return response;
             }
         }
+        if ("mercadopago".equals(method) && getConfig().getMercadoPago().isEnable()) {
+            PacketPluginQueryPayment.Response response = mercadoPago.handleQueryPayment(packet, getConfig());
+            if (response.getError() == null || response.getError().isEmpty() || order == null) {
+                return response;
+            }
+        }
         if (order == null) {
             return new PacketPluginQueryPayment.Response("payment.cancel.not-found");
         }
@@ -221,7 +239,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
                 null,
                 null,
                 priceToAmountMinor(order.getMoney()),
-                "paypal".equals(method) ? getConfig().getPaypal().getCurrency() : "CNY",
+                currencyForMethod(method),
                 0L,
                 0L,
                 Collections.emptyMap()
@@ -231,7 +249,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
     private static String normalizeMethod(String method) {
         if (method == null) return null;
         String normalized = method.trim().toLowerCase(Locale.ROOT);
-        if (normalized.equals("wechat") || normalized.equals("alipay") || normalized.equals("paypal")) {
+        if (normalized.equals("wechat") || normalized.equals("alipay") || normalized.equals("paypal") || normalized.equals("mercadopago")) {
             return normalized;
         }
         return null;
@@ -327,6 +345,9 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
     private String currencyForMethod(String method) {
         if ("paypal".equalsIgnoreCase(method)) {
             return getConfig().getPaypal().getCurrency();
+        }
+        if ("mercadopago".equalsIgnoreCase(method)) {
+            return getConfig().getMercadoPago().getCurrency();
         }
         return "CNY";
     }

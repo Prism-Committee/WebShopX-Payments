@@ -68,6 +68,7 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
         if (isMethodEnabled("alipay")) methods.add(PaymentMethod.ALIPAY);
         if (isMethodEnabled("wechat")) methods.add(PaymentMethod.WECHAT);
         if (isMethodEnabled("paypal")) methods.add(PaymentMethod.PAYPAL);
+        if (isMethodEnabled("mercadopago")) methods.add(PaymentMethod.CUSTOM);
         if (!methods.isEmpty()) methods.add(PaymentMethod.AUTO);
         return Collections.unmodifiableSet(methods);
     }
@@ -287,6 +288,7 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
             if (isMethodEnabled("alipay")) return "alipay";
             if (isMethodEnabled("wechat")) return "wechat";
             if (isMethodEnabled("paypal")) return "paypal";
+            if (isMethodEnabled("mercadopago")) return "mercadopago";
             return null;
         }
         if (method == PaymentMethod.CUSTOM) {

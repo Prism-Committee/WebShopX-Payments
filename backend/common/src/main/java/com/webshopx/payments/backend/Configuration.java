@@ -34,6 +34,8 @@ public class Configuration {
     private AlipayFaceToFace alipayFaceToFace = new AlipayFaceToFace();
     @SerializedName("paypal")
     private Paypal paypal = new Paypal();
+    @SerializedName("mercadopago")
+    private MercadoPago mercadoPago = new MercadoPago();
     @SerializedName("hook")
     private Hook hook = new Hook();
 
@@ -58,6 +60,7 @@ public class Configuration {
         getWeChatNative().postLoad(dataFolder);
         getAlipayFaceToFace().postLoad(dataFolder);
         getPaypal().postLoad(dataFolder);
+        getMercadoPago().postLoad(dataFolder);
         getHook().postLoad(dataFolder);
     }
 
@@ -87,6 +90,10 @@ public class Configuration {
 
     public Paypal getPaypal() {
         return paypal;
+    }
+
+    public MercadoPago getMercadoPago() {
+        return mercadoPago;
     }
 
     public Hook getHook() {
@@ -366,6 +373,71 @@ public class Configuration {
 
         public String getCurrency() {
             return currency == null || currency.trim().isEmpty() ? "USD" : currency.trim().toUpperCase();
+        }
+
+        public ProxySettings getProxy() {
+            return proxy;
+        }
+    }
+
+    public static class MercadoPago {
+        private boolean enable = false;
+        @SerializedName("host")
+        private String host = "https://api.mercadopago.com";
+        @SerializedName("access_token")
+        private String accessToken = "";
+        @SerializedName("currency")
+        private String currency = "BRL";
+        @SerializedName("sandbox")
+        private boolean sandbox = false;
+        @SerializedName("notification_url")
+        private String notificationUrl = "";
+        @SerializedName("back_url")
+        private String backUrl = "";
+        @SerializedName("proxy")
+        private ProxySettings proxy;
+
+        private void postLoad(File dataFolder) {
+            if (isEnable()) {
+                String token = parseString(logger, dataFolder, "mercadopago.access_token", accessToken);
+                if (token == null || token.trim().isEmpty()) {
+                    this.enable = false;
+                    return;
+                }
+                this.accessToken = token.trim();
+            }
+        }
+
+        public boolean isEnable() {
+            return enable;
+        }
+
+        public String getHost() {
+            String value = host == null || host.trim().isEmpty() ? "https://api.mercadopago.com" : host.trim();
+            while (value.endsWith("/")) {
+                value = value.substring(0, value.length() - 1);
+            }
+            return value;
+        }
+
+        public String getAccessToken() {
+            return accessToken == null ? "" : accessToken.trim();
+        }
+
+        public String getCurrency() {
+            return currency == null || currency.trim().isEmpty() ? "BRL" : currency.trim().toUpperCase();
+        }
+
+        public boolean isSandbox() {
+            return sandbox;
+        }
+
+        public String getNotificationUrl() {
+            return notificationUrl == null || notificationUrl.trim().isEmpty() ? null : notificationUrl.trim();
+        }
+
+        public String getBackUrl() {
+            return backUrl == null || backUrl.trim().isEmpty() ? null : backUrl.trim();
         }
 
         public ProxySettings getProxy() {

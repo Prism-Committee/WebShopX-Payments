@@ -13,6 +13,7 @@ WebShopX 仍然负责充值订单、钱包余额、账务入账和发货。WebSh
 - 发布形态：`with-backend`
 - 支持的支付方式：
   - PayPal REST Orders API
+  - MercadoPago Checkout Pro
   - 微信支付 Native
   - 支付宝当面付预创建
   - 可选的微信/支付宝 Hook 模式
@@ -80,6 +81,7 @@ out/WebShopX-Payments-bukkit-with-backend-<version>.jar
 `backend/config.json` 控制支付平台凭据：
 
 - `paypal`：PayPal REST API 凭据、接口地址、币种、代理
+- `mercadopago`：MercadoPago Access Token、接口地址、币种、Checkout Pro 返回/通知地址、代理
 - `wechat_native`：微信 Native 商户凭据、通知地址、代理
 - `alipay_face2face`：支付宝当面付凭据、产品码、代理
 - `hook`：可选的 Hook HTTP 接口和个人收款码匹配设置
@@ -112,6 +114,7 @@ out/WebShopX-Payments-bukkit-with-backend-<version>.jar
 - 返回 `PROVIDER_UNAVAILABLE`：确认安装的是 `with-backend` jar，并且内嵌后端已正常加载。
 - 支付方式不可用：确认 `config.yml` 与 `backend/config.json` 中对应支付方式都已启用。
 - PayPal 网络失败：在 `backend/config.json` 的 PayPal 配置中启用代理，并优先用 sandbox 凭据测试。
+- MercadoPago 网络失败：确认 `backend/config.json` 的 `mercadopago.access_token`、`currency` 与账号所在国家/地区匹配；如在中国大陆服务器访问，优先配置代理。
 - 构建出现 Java class version 错误：请使用 JDK 25。
 
 ## 致谢

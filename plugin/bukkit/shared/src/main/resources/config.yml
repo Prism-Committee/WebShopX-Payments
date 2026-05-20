@@ -26,7 +26,7 @@ map-item:
 
 payment:
   # Default method when WebShopX requests AUTO.
-  # Supported values: alipay, wechat, paypal.
+  # Supported values: alipay, wechat, paypal, mercadopago.
   default-method: alipay
   # Seconds to wait for a synchronous WebShopXPaymentApi backend response.
   api-timeout-seconds: 15
@@ -34,6 +34,7 @@ payment:
     wechat: true
     alipay: true
     paypal: true
+    mercadopago: false
   # Payment timeout in seconds.
   timeout: 120
   # Used by Hook payments only. Official provider integrations ignore this.
