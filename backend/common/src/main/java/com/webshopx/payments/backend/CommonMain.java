@@ -71,7 +71,7 @@ public abstract class CommonMain<C extends ClientInfo<C>, S extends AbstractPaym
             String configRaw = gson.toJson(config);
             FileUtils.writeStringToFile(file, configRaw, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            logger.warn("加载配置文件时出现异常", e);
+            logger.warn("Failed to load backend config", e);
             if (config == null) {
                 config = new Configuration();
                 config.postLoad(getDataFolder());

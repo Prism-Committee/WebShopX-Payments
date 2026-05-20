@@ -6,7 +6,7 @@
 provider-id: webshopx-payments
 
 # Backend address. The with-backend build starts an embedded backend, so this
-# can usually stay commented.
+# can usually stay commented. Only set this if you later add an external backend.
 # backend-host: 'ws://127.0.0.1:62233'
 
 map-item:
@@ -26,6 +26,7 @@ map-item:
 
 payment:
   # Default method when WebShopX requests AUTO.
+  # Supported values: alipay, wechat, paypal.
   default-method: alipay
   # Seconds to wait for a synchronous WebShopXPaymentApi backend response.
   api-timeout-seconds: 15

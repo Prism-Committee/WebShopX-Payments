@@ -5,7 +5,7 @@ package com.alipay.api;
 
 /**
  * @author liuqun.lq
- * @version $Id: Decryptor.java, v 0.1 2018��07��03�� 11:44 liuqun.lq Exp $
+ * @version $Id: Decryptor.java, v 0.1 2018-07-03 11:44 liuqun.lq Exp $
  */
 public interface Decryptor {
     String decrypt(String encryptContent, String encryptType, String charset);

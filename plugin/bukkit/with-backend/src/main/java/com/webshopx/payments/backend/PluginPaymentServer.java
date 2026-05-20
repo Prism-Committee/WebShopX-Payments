@@ -1,13 +1,17 @@
 package com.webshopx.payments.backend;
 
 import com.sun.net.httpserver.HttpServer;
+import com.webshopx.payments.backend.data.LocalClientInfo;
+import com.webshopx.payments.packets.common.IPacket;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
-import com.webshopx.payments.backend.data.LocalClientInfo;
-import com.webshopx.payments.packets.common.IPacket;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -41,7 +45,6 @@ public class PluginPaymentServer extends AbstractPaymentServer<LocalClientInfo> 
     protected void restart() {
         stop();
         Configuration config = getConfig();
-        // 仅在开启 hook 时，运行 HTTP 服务器
         if (config.getHook().isEnable()) {
             try {
                 server = HttpServer.create(new InetSocketAddress(config.getPort()), 0);
@@ -64,34 +67,31 @@ public class PluginPaymentServer extends AbstractPaymentServer<LocalClientInfo> 
                     } catch (IOException e) {
                         exchange.sendResponseHeaders(500, 0);
                         OutputStream os = exchange.getResponseBody();
-                        os.write(e.toString().getBytes());
+                        os.write(e.toString().getBytes(StandardCharsets.UTF_8));
                         os.close();
                         return;
                     }
                     receiveHook(body);
                     exchange.sendResponseHeaders(200, 0);
                     OutputStream os = exchange.getResponseBody();
-                    os.write("OK".getBytes());
+                    os.write("OK".getBytes(StandardCharsets.UTF_8));
                     os.close();
                 });
                 server.start();
-                logger.info("[Hook] HTTP 服务器已在 {} 端口启动", config.getPort());
+                logger.info("[Hook] HTTP server started on port {}", config.getPort());
             } catch (Throwable t) {
-                logger.warn("开启 HTTP 服务器时出现一个异常", t);
+                logger.warn("Failed to start Hook HTTP server", t);
             }
         }
     }
 
     @Override
     public List<String> getAllProcess() {
-        // 在 Java 9 及以上获取所有进程
         if (java9ProcessGetter != null) {
             return java9ProcessGetter.get();
         }
-        // 在 Java 8 获取所有进程
         List<String> list = new ArrayList<>();
         String os = System.getProperty("os.name").toLowerCase();
-        // 由于目前只有 Windows 的 Hook，故暂时不对其它系统进行支持
         if (os.contains("windows")) {
             try {
                 ProcessBuilder builder = new ProcessBuilder("wmic", "process", "get", "ExecutablePath");
@@ -104,7 +104,6 @@ public class PluginPaymentServer extends AbstractPaymentServer<LocalClientInfo> 
                         String trim = line.replace("\t", "").trim();
                         if (trim.isEmpty() || trim.equals("ExecutablePath")) continue;
                         list.add(trim);
-                        System.out.println("\"" + trim + "\"");
                     }
                 }
             } catch (Throwable ignored) {

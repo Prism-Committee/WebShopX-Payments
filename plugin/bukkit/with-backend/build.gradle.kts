@@ -50,6 +50,7 @@ tasks {
             "META-INF/*.SF",
             "META-INF/*.DSA",
             "META-INF/*.RSA",
+            "META-INF/maven/**",
         )
         val shadowRelocations: Map<String, String> by project.extra
         mapOf(
@@ -57,6 +58,7 @@ tasks {
             "com.wechat" to "payment.wechat",
             "com.alipay" to "payment.alipay",
             "io.github.eealba.payper" to "payment.paypal",
+            "io.github.eealba.jasoner" to "payment.paypal.json",
             "okhttp3" to "okhttp3",
             "okio" to "okio",
             "javax.xml" to "xml.javax",

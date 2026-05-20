@@ -4,9 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import io.github.eealba.payper.core.client.ResponseSpec;
-import io.github.eealba.payper.orders.v2.api.CheckoutOrdersApiClient;
-import io.github.eealba.payper.orders.v2.model.*;
 import com.webshopx.payments.backend.AbstractPaymentServer;
 import com.webshopx.payments.backend.Configuration;
 import com.webshopx.payments.backend.PaymentOrderRequest;
@@ -14,6 +11,16 @@ import com.webshopx.payments.backend.PaymentOrderResponse;
 import com.webshopx.payments.backend.data.ClientInfo;
 import com.webshopx.payments.backend.util.ProxySupport;
 import com.webshopx.payments.packets.plugin.PacketPluginQueryPayment;
+import io.github.eealba.payper.core.client.ResponseSpec;
+import io.github.eealba.payper.orders.v2.api.CheckoutOrdersApiClient;
+import io.github.eealba.payper.orders.v2.model.AmountWithBreakdown;
+import io.github.eealba.payper.orders.v2.model.CheckoutPaymentIntent;
+import io.github.eealba.payper.orders.v2.model.CurrencyCode;
+import io.github.eealba.payper.orders.v2.model.ErrorDefault;
+import io.github.eealba.payper.orders.v2.model.Order;
+import io.github.eealba.payper.orders.v2.model.OrderRequest;
+import io.github.eealba.payper.orders.v2.model.OrderStatus;
+import io.github.eealba.payper.orders.v2.model.PurchaseUnitRequest;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -25,6 +32,7 @@ import java.util.TimerTask;
 
 public class PaymentPaypal<C extends ClientInfo<C>> {
     AbstractPaymentServer<C> server;
+
     public PaymentPaypal(AbstractPaymentServer<C> server) {
         this.server = server;
     }
@@ -37,46 +45,38 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
         try {
             PayPalOrderData createdOrder = ProxySupport.call(config.resolveProxy(config.getPaypal().getProxy()), server.getLogger(), () -> {
                 CheckoutOrdersApiClient api = CheckoutOrdersApiClient.create(config.getPaypal().getConfig());
-                // 创建订单
                 ResponseSpec.Response<Order, ErrorDefault> createResponse = api.orders().create().withBody(OrderRequest.builder()
-                                // 添加一个订单采购单位
                                 .purchaseUnits(Collections.singletonList(PurchaseUnitRequest.builder()
-                                        // 设置金额
                                         .amount(AmountWithBreakdown.builder()
                                                 .value(request.getPrice())
                                                 .currencyCode(paypalCurrency(config))
                                                 .build())
                                         .build()))
-                                // 设置订单付款意图
-                                // CAPTURE: 商家打算在客户付款后立即捕获付款。
                                 .intent(CheckoutPaymentIntent.CAPTURE)
                                 .build())
                         .retrieve()
                         .toResponse();
-                return requireSuccessful("下单", createResponse);
+                return requireSuccessful("create order", createResponse);
             });
             if (config.isDebug()) {
-                server.getLogger().info("[DEBUG] Paypal 官方接口 下单结果: {}", createdOrder.raw);
+                server.getLogger().info("[DEBUG] PayPal create order response: {}", createdOrder.raw);
             }
-            String url = createdOrder.approvalUrl;
 
             ClientInfo.Order<C> order = client.createOrder(orderId, "paypal", request.getPlayerName(), request.getPrice());
             String outTradeNo = createdOrder.id;
             order.setCancelAction(() -> cancelOrder(outTradeNo));
-            // 轮询检查是否交易成功
             order.setTask(new TimerTask() {
                 @Override
                 public void run() {
                     checkOrder(client, this, orderId, outTradeNo);
                 }
             });
-            // 每3秒检查一次是否支付成功
             server.getTimer().schedule(order.getTask(), 1000L, 3000L);
-            server.getLogger().info("PayPal 官方接口 下单成功 : {}", outTradeNo);
-            return new PaymentOrderResponse("face2face", orderId, order.getMoney(), url);
+            server.getLogger().info("PayPal order created: merchantOrderId={}, providerOrderId={}", orderId, outTradeNo);
+            return new PaymentOrderResponse("face2face", orderId, order.getMoney(), createdOrder.approvalUrl);
         } catch (Exception e) {
             client.removeOrder(orderId);
-            server.getLogger().warn("Paypal 官方接口 API执行错误", e);
+            server.getLogger().warn("PayPal create order failed", e);
             return new PaymentOrderResponse("payment.internal-error");
         }
     }
@@ -106,7 +106,7 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
                     extra
             );
         } catch (Exception e) {
-            server.getLogger().warn("Paypal 官方接口 API查询订单时执行错误", e);
+            server.getLogger().warn("PayPal query order failed: providerOrderId={}", providerOrderId, e);
             return new PacketPluginQueryPayment.Response("payment.internal-error");
         }
     }
@@ -114,7 +114,7 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
     private void checkOrder(C client, TimerTask task, String orderId, String outTradeNo) {
         Configuration config = server.getConfig();
         ClientInfo.Order<C> order = client.getOrder(orderId);
-        if (order == null || !client.isOpen()) { // 插件连接断开时、任务不存在时取消任务，并关闭交易
+        if (order == null || !client.isOpen()) {
             task.cancel();
             if (order != null) {
                 order.setTask(null);
@@ -126,56 +126,44 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
         try {
             PayPalOrderData response = queryOrder(outTradeNo, config);
             if (config.isDebug()) {
-                server.getLogger().info("[DEBUG] Paypal 官方接口 检查结果: {}", response.raw);
+                server.getLogger().info("[DEBUG] PayPal query order response: {}", response.raw);
             }
             switch (response.status) {
-                // 订单是使用指定的上下文创建的。
                 case CREATED:
-                    // 该订单被保存并保留。订单状态将继续处于进行中，直到对订单中的所有采购单位进行捕获，并使用 final_capture = true。
                 case SAVED:
+                case PAYER_ACTION_REQUIRED:
                     break;
-                // 客户已通过 PayPal 钱包或其他形式的访客或无品牌付款批准付款。例如，银行卡、银行账户等。
                 case APPROVED:
                     response = ProxySupport.call(config.resolveProxy(config.getPaypal().getProxy()), server.getLogger(), () -> {
                         CheckoutOrdersApiClient api = CheckoutOrdersApiClient.create(config.getPaypal().getConfig());
                         ResponseSpec.Response<Order, ErrorDefault> capture = api.orders().capture().withId(outTradeNo).retrieve().toResponse();
-                        return requireSuccessful("捕获订单", capture);
+                        return requireSuccessful("capture order", capture);
                     });
                     if (config.isDebug()) {
-                        server.getLogger().info("[DEBUG] Paypal 官方接口 捕获结果: {}", response.raw);
+                        server.getLogger().info("[DEBUG] PayPal capture order response: {}", response.raw);
                     }
                     if (response.status == OrderStatus.COMPLETED) {
                         completeOrder(client, order, response);
                     }
                     break;
-                // 订单中的所有采购单位都将作废。
                 case VOIDED:
                     client.removeOrder(order);
                     server.sendPaymentCancel(client, order, "payment.voided");
                     break;
-                // 订单意图已完成，并创建了付款资源。
-                // 为了避免麻烦，只添加一个付款单位，无需进行额外检查
                 case COMPLETED:
                     completeOrder(client, order, response);
                     break;
-                // 订单需要付款人执行作（e.g. 3DS 身份验证）。
-                // 将付款人重定向到在授权或捕获订单之前作为响应的一部分返回的“rel”：“payer-action”HATEOAS 链接。
-                // 某些支付来源可能不会返回付款人作 HATEOAS 链接（例如 MB WAY）。
-                // 对于这些支付来源，付款人作由计划本身管理（例如，通过短信、电子邮件、应用内通知等）。
-                case PAYER_ACTION_REQUIRED:
-                    break;
             }
         } catch (Exception e) {
-            server.getLogger().warn("Paypal 官方接口 API检查订单时执行错误", e);
+            server.getLogger().warn("PayPal poll order failed: merchantOrderId={}, providerOrderId={}", orderId, outTradeNo, e);
         }
     }
 
     private PayPalOrderData queryOrder(String outTradeNo, Configuration config) throws Exception {
         return ProxySupport.call(config.resolveProxy(config.getPaypal().getProxy()), server.getLogger(), () -> {
             CheckoutOrdersApiClient api = CheckoutOrdersApiClient.create(config.getPaypal().getConfig());
-            // 查询订单
             ResponseSpec.Response<Order, ErrorDefault> queryResponse = api.orders().get().withId(outTradeNo).retrieve().toResponse();
-            return requireSuccessful("查询订单", queryResponse);
+            return requireSuccessful("query order", queryResponse);
         });
     }
 
@@ -195,21 +183,21 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
         }
         try {
             JsonObject error = JsonParser.parseString(raw).getAsJsonObject();
-            server.getLogger().warn("PayPal 官方接口 {} 失败: HTTP {}, name={}, message={}, debug_id={}",
+            server.getLogger().warn("PayPal {} failed: HTTP {}, name={}, message={}, debug_id={}",
                     action, response.statusCode(), getString(error, "name"), getString(error, "message"), getString(error, "debug_id"));
             JsonArray details = getArray(error, "details");
             if (details != null) {
                 for (JsonElement element : details) {
                     if (!element.isJsonObject()) continue;
                     JsonObject detail = element.getAsJsonObject();
-                    server.getLogger().warn("PayPal 错误详情: field={}, issue={}, description={}",
+                    server.getLogger().warn("PayPal error detail: field={}, issue={}, description={}",
                             getString(detail, "field"), getString(detail, "issue"), getString(detail, "description"));
                 }
             }
             return;
         } catch (Throwable ignored) {
         }
-        server.getLogger().warn("PayPal 官方接口 {} 失败: HTTP {}, body={}", action, response.statusCode(), raw);
+        server.getLogger().warn("PayPal {} failed: HTTP {}, body={}", action, response.statusCode(), raw);
     }
 
     private CurrencyCode paypalCurrency(Configuration config) {
@@ -217,7 +205,7 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
         try {
             return CurrencyCode.valueOf(currency);
         } catch (IllegalArgumentException e) {
-            server.getLogger().warn("PayPal currency 配置无效: {}，已回退为 USD", currency);
+            server.getLogger().warn("Invalid PayPal currency config: {}; fallback to USD", currency);
             return CurrencyCode.USD;
         }
     }
@@ -230,13 +218,13 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
         client.removeOrder(order);
 
         if (priceToAmountMinor(money) != priceToAmountMinor(order.getMoney())) {
-            server.getLogger().warn("[收款] 从 PayPal 收款，来自 {} 的 {}，但支付金额与订单金额 {} 不一致，自动取消订单",
+            server.getLogger().warn("PayPal payment amount mismatch: payer={}, paid={}, expected={}; cancelling order",
                     response.payerName, money, order.getMoney());
             server.sendPaymentCancel(client, order, "payment.cancel.not-the-agreed-price");
             return;
         }
         String currency = server.getConfig().getPaypal().getCurrency();
-        server.getLogger().info("[收款] 从 PayPal 收款，来自 {} 的 {} {}", response.payerName, currency, money);
+        server.getLogger().info("PayPal payment completed: payer={}, amount={} {}", response.payerName, currency, money);
         server.sendPaymentSuccess(client, order, money);
     }
 
@@ -353,7 +341,7 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
     }
 
     private void cancelOrder(String outTradeNo) {
-        // Paypal 无法取消或者作废订单，取消订单这里什么都不用做
-        // 让它自动过期就完事了
+        // PayPal Orders API does not provide a useful cancel action for this flow.
+        // Unapproved orders expire upstream.
     }
 }

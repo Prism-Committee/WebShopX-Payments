@@ -7,7 +7,7 @@ import com.alipay.api.internal.util.AlipayEncrypt;
 
 /**
  * @author liuqun.lq
- * @version $Id: DefaultDecryptor.java, v 0.1 2018��07��03�� 12:35 liuqun.lq Exp $
+ * @version $Id: DefaultDecryptor.java, v 0.1 2018-07-03 12:35 liuqun.lq Exp $
  */
 public class DefaultDecryptor implements Decryptor {
 

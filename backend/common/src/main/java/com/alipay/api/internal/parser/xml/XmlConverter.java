@@ -269,7 +269,7 @@ public class XmlConverter implements Converter {
     }
 
     /**
-     * 绛惧��婧�涓�
+     * Parse XML sign source data.
      */
     private ResponseParseItem parseXMLSignSourceData(String body, String rootNode,
                                                      int indexOfRootNode) {

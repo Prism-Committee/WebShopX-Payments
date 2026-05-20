@@ -6,17 +6,17 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 import com.wechat.pay.api.WXPay;
 import com.wechat.pay.utils.WXPayUtility;
+import com.webshopx.payments.backend.util.NullAdapter;
 import io.github.eealba.payper.core.client.PayperAuthenticator;
 import io.github.eealba.payper.core.client.PayperConfig;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.webshopx.payments.backend.util.NullAdapter;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @SuppressWarnings({"FieldMayBeFinal", "FieldCanBeLocal"})
@@ -37,28 +37,19 @@ public class Configuration {
     @SerializedName("hook")
     private Hook hook = new Hook();
 
-    /**
-     * 从配置或者文件读取字符串
-     *
-     * @param logger     日志记录器，用于警告
-     * @param dataFolder 数据文件夹
-     * @param name       配置名，用于警告
-     * @param str        输入的字符串
-     * @return 如果输入的字符串以 <code>file:</code> 开头，则读取文件内容，反之返回输入的字符串
-     */
     private static String parseString(Logger logger, File dataFolder, String name, String str) {
+        if (str == null) return null;
         if (!str.startsWith("file:")) return str;
         String path = str.substring(5);
         File file = new File(dataFolder, path);
         if (!file.exists()) {
-            logger.warn("无法从配置 {} 找到对应文件 {}", name, path);
+            logger.warn("Configured file does not exist: {} -> {}", name, path);
             return null;
         }
         try {
             return FileUtils.readFileToString(file, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            String log = "读取文件 " + path + " 时出现一个异常";
-            logger.warn(log, e);
+            logger.warn("Failed to read configured file: {} -> {}", name, path, e);
             return null;
         }
     }
@@ -198,19 +189,19 @@ public class Configuration {
         @SerializedName("host")
         private String host = "https://api.mch.weixin.qq.com";
         @SerializedName("app_id")
-        private String appId = "开发者ID";
+        private String appId = "WECHAT_APP_ID";
         @SerializedName("merchant_id")
-        private String merchantId = "商户号";
+        private String merchantId = "WECHAT_MERCHANT_ID";
         @SerializedName("merchant_serial_number")
-        private String merchantSerialNumber = "商户证书序列号";
+        private String merchantSerialNumber = "WECHAT_MERCHANT_SERIAL_NUMBER";
         @SerializedName("notify_url")
-        private String notifyUrl = "https://mcio.dev/consumer/notify";
+        private String notifyUrl = "https://example.com/wechat/notify";
         @SerializedName("private_key")
         private String privateKey = "file:secrets/wechat/apiclient_key.pem";
         @SerializedName("public_key")
         private String publicKey = "file:secrets/wechat/pub_key.pem";
         @SerializedName("public_key_id")
-        private String publicKeyId = "公钥ID";
+        private String publicKeyId = "WECHAT_PUBLIC_KEY_ID";
         @SerializedName("proxy")
         private ProxySettings proxy;
 
@@ -445,8 +436,8 @@ public class Configuration {
             if (isEnable()) {
                 String privateKeyStr = getPrivateKey();
                 String publicKeyStr = getAlipayPublicKey();
-                String privateKey = parseString(logger, dataFolder, "alipay_face2face.private_key", privateKeyStr);
-                String publicKey = parseString(logger, dataFolder, "alipay_face2face.alipay_public_key", publicKeyStr);
+                String privateKey = parseString(logger, dataFolder, "hook.alipay.private_key", privateKeyStr);
+                String publicKey = parseString(logger, dataFolder, "hook.alipay.alipay_public_key", publicKeyStr);
                 if (privateKey == null || publicKey == null) {
                     this.enable = false;
                     this.config = null;
@@ -487,11 +478,15 @@ public class Configuration {
     public static abstract class HookProperties {
         protected boolean enable = false;
         @SerializedName("payment_url")
-        private String paymentUrl = "收款码地址";
+        private String paymentUrl = "PAYMENT_QR_URL";
         @SerializedName("payment_urls")
-        private Map<String, String> paymentUrls = new HashMap<String, String>() {{
-            put("1.00", "示例，1元的收款码地址");
-        }};
+        private Map<String, String> paymentUrls = defaultPaymentUrls();
+
+        private static Map<String, String> defaultPaymentUrls() {
+            Map<String, String> map = new LinkedHashMap<>();
+            map.put("1.00", "PAYMENT_QR_URL_FOR_1_00");
+            return map;
+        }
 
         protected void postLoad(File dataFolder) {}
 
@@ -509,7 +504,7 @@ public class Configuration {
 
         public String getPaymentUrl(String price) {
             String trim = getPaymentUrls().getOrDefault(price, "").trim();
-            if (trim.isEmpty() || trim.contains("示例，")) {
+            if (trim.isEmpty() || trim.startsWith("PAYMENT_QR_URL_FOR_")) {
                 return getPaymentUrl();
             } else {
                 return trim;

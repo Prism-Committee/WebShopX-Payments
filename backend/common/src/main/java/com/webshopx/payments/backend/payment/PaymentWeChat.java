@@ -1,6 +1,5 @@
 package com.webshopx.payments.backend.payment;
 
-import com.google.gson.JsonParser;
 import com.wechat.pay.api.CloseOrder;
 import com.wechat.pay.api.NativePrepay;
 import com.wechat.pay.api.QueryByOutTradeNo;
@@ -59,11 +58,11 @@ public class PaymentWeChat<C extends ClientInfo<C>> {
         String paymentUrl = hook.getPaymentUrl(money);
         ClientInfo.Order<C> order = client.createOrder(orderId, "wechat", request.getPlayerName(), money);
         moneyLocked.put(money, order);
+        server.getLogger().info("WeChat Hook order created: merchantOrderId={}, amount={}", orderId, money);
         return new PaymentOrderResponse("hook", orderId, order.getMoney(), paymentUrl);
     }
 
     public PaymentOrderResponse handleNative(PaymentOrderRequest request, C client, Configuration config) {
-        // 微信支付的订单总金额单位为「分」，保留两位小数的结果去掉小数点，再转整数完事
         Long priceWeChat = Util.parseLong(request.getPrice().replace(".", "")).orElse(null);
         if (priceWeChat == null) {
             return new PaymentOrderResponse("payment.not-a-number");
@@ -82,37 +81,35 @@ public class PaymentWeChat<C extends ClientInfo<C>> {
         prepayRequest.amount.total = priceWeChat;
         prepayRequest.amount.currency = "CNY";
 
-        // 调用下单方法，得到应答
         NativePrepay.Response response;
         try {
             response = ProxySupport.call(config.resolveProxy(config.getWeChatNative().getProxy()), server.getLogger(), () -> service.run(prepayRequest));
             if (config.isDebug()) {
-                server.getLogger().info("[DEBUG] 微信 Native支付 下单结果: {}", WXPayUtility.toJson(response));
+                server.getLogger().info("[DEBUG] WeChat Native prepay response: {}", WXPayUtility.toJson(response));
             }
         } catch (Exception e) {
             client.removeOrder(orderId);
-            server.getLogger().warn("微信 Native支付 API执行错误", e);
+            server.getLogger().warn("WeChat Native prepay failed: merchantOrderId={}", orderId, e);
             return new PaymentOrderResponse("payment.internal-error");
         }
 
         ClientInfo.Order<C> order = client.createOrder(orderId, "wechat", request.getPlayerName(), request.getPrice());
         order.setCancelAction(() -> cancelWeChatNative(orderId));
-        // 轮询检查是否交易成功
         order.setTask(new TimerTask() {
             @Override
             public void run() {
                 checkWeChatNative(client, this, orderId);
             }
         });
-        // 每3秒检查一次是否支付成功
         server.getTimer().schedule(order.getTask(), 1000L, 3000L);
+        server.getLogger().info("WeChat Native order created: merchantOrderId={}", orderId);
         return new PaymentOrderResponse("native", orderId, order.getMoney(), response.getCodeUrl());
     }
 
     private void checkWeChatNative(C client, TimerTask task, String orderId) {
         Configuration config = server.getConfig();
         ClientInfo.Order<C> order = client.getOrder(orderId);
-        if (order == null || !client.isOpen()) { // 插件连接断开时、任务不存在时取消任务，并关闭交易
+        if (order == null || !client.isOpen()) {
             task.cancel();
             if (order != null) {
                 order.setTask(null);
@@ -130,14 +127,14 @@ public class PaymentWeChat<C extends ClientInfo<C>> {
         try {
             response = ProxySupport.call(config.resolveProxy(config.getWeChatNative().getProxy()), server.getLogger(), () -> service.run(request));
             if (config.isDebug()) {
-                server.getLogger().info("[DEBUG] 微信 Native支付 检查结果: {}", WXPayUtility.toJson(response));
+                server.getLogger().info("[DEBUG] WeChat Native query response: {}", WXPayUtility.toJson(response));
             }
         } catch (Exception e) {
-            server.getLogger().warn("微信 Native支付 API检查订单时执行错误", e);
+            server.getLogger().warn("WeChat Native query failed: merchantOrderId={}", orderId, e);
             return;
         }
         switch (response.tradeState) {
-            case "SUCCESS": // 支付成功
+            case "SUCCESS":
                 client.removeOrder(order);
                 String openId = response.payer.openid;
                 String money;
@@ -146,19 +143,19 @@ public class PaymentWeChat<C extends ClientInfo<C>> {
                 } else {
                     money = order.getMoney();
                 }
-                server.getLogger().info("[收款] 从微信Native收款，来自 {} 的 ￥{}", openId, money);
+                server.getLogger().info("WeChat Native payment completed: payerOpenId={}, amount=CNY {}", openId, money);
                 server.sendPaymentSuccess(client, order, money);
                 break;
-            case "REFUND": // 转入退款
-            case "CLOSED": // 已关闭
+            case "REFUND":
+            case "CLOSED":
                 client.removeOrder(order);
+                server.getLogger().info("WeChat Native order ended: merchantOrderId={}, state={}", orderId, response.tradeState);
                 server.sendPaymentCancel(client, order, "payment.native." + response.tradeState.toLowerCase());
                 break;
-            case "NOTPAY": // 未支付，忽略
-                break;
-            case "REVOKED": // 已撤销 (仅付款码，忽略)
-            case "USERPAYING": // 用户支付中 (仅付款码，忽略)
-            case "PAYERROR": // 支付失败 (仅付款码，忽略)
+            case "NOTPAY":
+            case "REVOKED":
+            case "USERPAYING":
+            case "PAYERROR":
             default:
                 break;
         }
@@ -175,7 +172,7 @@ public class PaymentWeChat<C extends ClientInfo<C>> {
         try {
             ProxySupport.run(config.resolveProxy(config.getWeChatNative().getProxy()), server.getLogger(), () -> service.run(request));
         } catch (Exception e) {
-            server.getLogger().warn("微信 Native支付 API关闭交易时执行错误", e);
+            server.getLogger().warn("WeChat Native close order failed: merchantOrderId={}", orderId, e);
         }
     }
 }
