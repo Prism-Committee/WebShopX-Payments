@@ -9,6 +9,7 @@ import com.webshopx.payments.backend.data.HookReceive;
 import com.webshopx.payments.backend.payment.PaymentAlipay;
 import com.webshopx.payments.backend.payment.PaymentMercadoPago;
 import com.webshopx.payments.backend.payment.PaymentPaypal;
+import com.webshopx.payments.backend.payment.PaymentStripe;
 import com.webshopx.payments.backend.payment.PaymentWeChat;
 import com.webshopx.payments.backend.util.Util;
 import com.webshopx.payments.packets.PacketSerializer;
@@ -37,6 +38,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
     PaymentAlipay alipay = new PaymentAlipay(this);
     PaymentPaypal paypal = new PaymentPaypal(this);
     PaymentMercadoPago mercadoPago = new PaymentMercadoPago(this);
+    PaymentStripe stripe = new PaymentStripe(this);
 
     public AbstractPaymentServer(Logger logger) {
         this.logger = logger;
@@ -153,6 +155,11 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
                 return mercadoPago.handleCreateOrder(request, client, config);
             }
         }
+        if (request.getMethod().equals("stripe")) {
+            if (config.getStripe().isEnable()) {
+                return stripe.handleCreateOrder(request, client, config);
+            }
+        }
         return new PaymentOrderResponse("payment.type-unknown");
     }
 
@@ -195,8 +202,8 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
         Map<String, String> extra = new LinkedHashMap<>();
         extra.put("backendSubType", response.getSubType());
         String paymentUrl = response.getPaymentUrl();
-        String qrCodeUrl = ("paypal".equals(method) || "mercadopago".equals(method)) ? null : paymentUrl;
-        if ("paypal".equals(method) || "mercadopago".equals(method)) {
+        String qrCodeUrl = ("paypal".equals(method) || "mercadopago".equals(method) || "stripe".equals(method)) ? null : paymentUrl;
+        if ("paypal".equals(method) || "mercadopago".equals(method) || "stripe".equals(method)) {
             qrCodeUrl = null;
         }
         return new PacketPluginCreatePayment.Response(
@@ -237,6 +244,12 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
                 return response;
             }
         }
+        if ("stripe".equals(method) && getConfig().getStripe().isEnable()) {
+            PacketPluginQueryPayment.Response response = stripe.handleQueryPayment(packet, getConfig());
+            if (response.getError() == null || response.getError().isEmpty() || order == null) {
+                return response;
+            }
+        }
         if (order == null) {
             return new PacketPluginQueryPayment.Response("payment.cancel.not-found");
         }
@@ -263,7 +276,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
     private static String normalizeMethod(String method) {
         if (method == null) return null;
         String normalized = method.trim().toLowerCase(Locale.ROOT);
-        if (normalized.equals("wechat") || normalized.equals("alipay") || normalized.equals("paypal") || normalized.equals("mercadopago")) {
+        if (normalized.equals("wechat") || normalized.equals("alipay") || normalized.equals("paypal") || normalized.equals("mercadopago") || normalized.equals("stripe")) {
             return normalized;
         }
         return null;
@@ -372,6 +385,9 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
         }
         if ("mercadopago".equalsIgnoreCase(method)) {
             return getConfig().getMercadoPago().getCurrency();
+        }
+        if ("stripe".equalsIgnoreCase(method)) {
+            return getConfig().getStripe().getCurrency();
         }
         return "CNY";
     }

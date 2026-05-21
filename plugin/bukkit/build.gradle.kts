@@ -27,6 +27,5 @@ subprojects {
     )
     dependencies {
         add("compileOnly", "org.spigotmc:spigot-api:1.20-R0.1-SNAPSHOT")
-        add("compileOnly", "me.clip:placeholderapi:2.12.2")
     }
 }

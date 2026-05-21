@@ -40,6 +40,8 @@ public class Configuration {
     private Paypal paypal = new Paypal();
     @SerializedName("mercadopago")
     private MercadoPago mercadoPago = new MercadoPago();
+    @SerializedName("stripe")
+    private Stripe stripe = new Stripe();
     @SerializedName("hook")
     private Hook hook = new Hook();
 
@@ -65,6 +67,7 @@ public class Configuration {
         getAlipayFaceToFace().postLoad(dataFolder);
         getPaypal().postLoad(dataFolder);
         getMercadoPago().postLoad(dataFolder);
+        getStripe().postLoad(dataFolder);
         getHook().postLoad(dataFolder);
     }
 
@@ -144,6 +147,10 @@ public class Configuration {
 
     public MercadoPago getMercadoPago() {
         return mercadoPago;
+    }
+
+    public Stripe getStripe() {
+        return stripe;
     }
 
     public Hook getHook() {
@@ -652,6 +659,56 @@ public class Configuration {
             } else {
                 return trim;
             }
+        }
+    }
+
+    @SuppressWarnings({"FieldMayBeFinal", "FieldCanBeLocal"})
+    public static class Stripe {
+        private boolean enable = false;
+        @SerializedName("secret_key")
+        private String secretKey = "";
+        @SerializedName("currency")
+        private String currency = "USD";
+        @SerializedName("success_url")
+        private String successUrl = "https://example.com/payment/success";
+        @SerializedName("cancel_url")
+        private String cancelUrl = "https://example.com/payment/cancel";
+        @SerializedName("proxy")
+        private ProxySettings proxy;
+
+        private void postLoad(File dataFolder) {
+            if (isEnable()) {
+                String token = parseString(logger, dataFolder, "stripe.secret_key", secretKey);
+                if (token == null || token.trim().isEmpty()) {
+                    this.enable = false;
+                    return;
+                }
+                this.secretKey = token.trim();
+            }
+        }
+
+        public boolean isEnable() {
+            return enable;
+        }
+
+        public String getSecretKey() {
+            return secretKey == null ? "" : secretKey.trim();
+        }
+
+        public String getCurrency() {
+            return currency == null || currency.trim().isEmpty() ? "USD" : currency.trim().toUpperCase();
+        }
+
+        public String getSuccessUrl() {
+            return successUrl == null ? "" : successUrl.trim();
+        }
+
+        public String getCancelUrl() {
+            return cancelUrl == null ? "" : cancelUrl.trim();
+        }
+
+        public ProxySettings getProxy() {
+            return proxy;
         }
     }
 }

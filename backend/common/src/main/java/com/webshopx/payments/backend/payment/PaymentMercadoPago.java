@@ -148,14 +148,26 @@ public class PaymentMercadoPago<C extends ClientInfo<C>> {
             body.addProperty("notification_url", notificationUrl);
         }
 
-        String backUrl = nonEmpty(request.getReturnUrl(), mercadoPago.getBackUrl());
-        if (backUrl != null) {
+        String returnUrl = request.getReturnUrl();
+        if (returnUrl != null && !returnUrl.trim().isEmpty()) {
             JsonObject backUrls = new JsonObject();
-            backUrls.addProperty("success", backUrl);
-            backUrls.addProperty("pending", backUrl);
-            backUrls.addProperty("failure", backUrl);
+            String successPendingUrl = returnUrl + (returnUrl.contains("?") ? "&" : "?") + "status=success";
+            String failureUrl = returnUrl + (returnUrl.contains("?") ? "&" : "?") + "status=error";
+            backUrls.addProperty("success", successPendingUrl);
+            backUrls.addProperty("pending", successPendingUrl);
+            backUrls.addProperty("failure", failureUrl);
             body.add("back_urls", backUrls);
             body.addProperty("auto_return", "approved");
+        } else {
+            String backUrl = mercadoPago.getBackUrl();
+            if (backUrl != null && !backUrl.trim().isEmpty()) {
+                JsonObject backUrls = new JsonObject();
+                backUrls.addProperty("success", backUrl);
+                backUrls.addProperty("pending", backUrl);
+                backUrls.addProperty("failure", backUrl);
+                body.add("back_urls", backUrls);
+                body.addProperty("auto_return", "approved");
+            }
         }
 
         if (request.getExpiresAt() > 0L) {

@@ -70,8 +70,8 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
         if (isMethodEnabled("alipay")) methods.add(PaymentMethod.ALIPAY);
         if (isMethodEnabled("wechat")) methods.add(PaymentMethod.WECHAT);
         if (isMethodEnabled("paypal")) methods.add(PaymentMethod.PAYPAL);
-        if (isMethodEnabled("mercadopago")) methods.add(PaymentMethod.CUSTOM);
-        if (!methods.isEmpty()) methods.add(PaymentMethod.AUTO);
+        if (isMethodEnabled("mercadopago")) methods.add(PaymentMethod.MERCADOPAGO);
+        if (isMethodEnabled("stripe")) methods.add(PaymentMethod.STRIPE);
         return Collections.unmodifiableSet(methods);
     }
 
@@ -81,6 +81,7 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
         if (isMethodEnabled("wechat")) currencies.add(plugin.resolvePaymentCurrency("wechat", "CNY"));
         if (isMethodEnabled("paypal")) currencies.add(plugin.resolvePaymentCurrency("paypal", "USD"));
         if (isMethodEnabled("mercadopago")) currencies.add(plugin.resolvePaymentCurrency("mercadopago", "BRL"));
+        if (isMethodEnabled("stripe")) currencies.add(plugin.resolvePaymentCurrency("stripe", "USD"));
         currencies.removeIf(value -> value == null || value.trim().isEmpty());
         return Collections.unmodifiableSet(currencies);
     }
@@ -308,16 +309,12 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
     }
 
     private String resolveMethodCode(PaymentMethod method, String methodCode) {
-        if (method == null || method == PaymentMethod.AUTO) {
-            String configured = trimToNull(plugin.getConfig().getString("payment.default-method"));
-            if (configured != null) {
-                String lower = configured.toLowerCase(Locale.ROOT);
-                if (isMethodEnabled(lower)) return lower;
-            }
+        if (method == null) {
             if (isMethodEnabled("alipay")) return "alipay";
             if (isMethodEnabled("wechat")) return "wechat";
             if (isMethodEnabled("paypal")) return "paypal";
             if (isMethodEnabled("mercadopago")) return "mercadopago";
+            if (isMethodEnabled("stripe")) return "stripe";
             return null;
         }
         if (method == PaymentMethod.CUSTOM) {
@@ -431,16 +428,20 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
         if (method == PaymentMethod.ALIPAY) return "alipay";
         if (method == PaymentMethod.WECHAT) return "wechat";
         if (method == PaymentMethod.PAYPAL) return "paypal";
+        if (method == PaymentMethod.MERCADOPAGO) return "mercadopago";
+        if (method == PaymentMethod.STRIPE) return "stripe";
         return null;
     }
 
     private static PaymentMethod methodFromCode(String method) {
         String lower = trimToNull(method);
-        if (lower == null) return PaymentMethod.AUTO;
+        if (lower == null) return PaymentMethod.ALIPAY;
         lower = lower.toLowerCase(Locale.ROOT);
         if (lower.equals("alipay")) return PaymentMethod.ALIPAY;
         if (lower.equals("wechat")) return PaymentMethod.WECHAT;
         if (lower.equals("paypal")) return PaymentMethod.PAYPAL;
+        if (lower.equals("mercadopago")) return PaymentMethod.MERCADOPAGO;
+        if (lower.equals("stripe")) return PaymentMethod.STRIPE;
         return PaymentMethod.CUSTOM;
     }
 
@@ -550,7 +551,7 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
         String merchantOrderId;
         String providerOrderId;
         PaymentStatus status = PaymentStatus.UNKNOWN;
-        PaymentMethod method = PaymentMethod.AUTO;
+        PaymentMethod method = PaymentMethod.ALIPAY;
         String methodCode;
         String backendMethodCode;
         long amountMinor;
