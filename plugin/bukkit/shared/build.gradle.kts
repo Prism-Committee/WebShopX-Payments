@@ -15,7 +15,6 @@ dependencies {
     base.collectPluginHolders()
     val webshopxApiClasses = rootProject.file("../WebShopX/build/classes/java/main")
     compileOnly(files(webshopxApiClasses))
-    compileOnly(project(":plugin:nms"))
     compileOnly(project(":packets"))
 }
 

@@ -17,7 +17,6 @@ import top.mrxiaom.pluginbase.utils.scheduler.FoliaLibScheduler;
 import com.webshopx.payments.api.PaymentClient;
 import com.webshopx.payments.api.PaymentEventBridge;
 import com.webshopx.payments.func.PaymentAPI;
-import com.webshopx.payments.nms.NMS;
 
 import java.io.File;
 import java.net.URISyntaxException;
@@ -100,17 +99,10 @@ public abstract class PluginCommon extends BukkitPlugin {
 
     @Override
     protected void beforeEnable() {
-        if (!NMS.init()) {
-            throw new IllegalStateException("Unsupported game version " + MinecraftVersion.getVersion().name());
-        }
-        if (NMS.isUnknownVersion()) {
-            warn("The server version is not explicitly supported; trying the latest compatible implementation.");
-        }
         LanguageManager.inst()
                 .setLangFile("messages.yml")
                 .register(Messages.class, Messages::holder)
-                .register(Errors.class, Errors::holder)
-                .register(CancelReasons.class, CancelReasons::holder);
+                .register(Errors.class, Errors::holder);
     }
 
     @Override

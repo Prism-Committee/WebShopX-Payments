@@ -144,44 +144,11 @@ public class PaymentAPI extends AbstractModule {
         if (bridge != null) {
             bridge.handleBackendPaymentEvent(packet);
         }
-        handleQrCodePaymentEvent(packet);
-    }
-
-    private void handleQrCodePaymentEvent(PacketBackendPaymentEvent packet) {
-        if (packet == null) return;
-        String providerOrderId = packet.getProviderOrderId();
-        if (providerOrderId == null || providerOrderId.trim().isEmpty()) return;
-        String status = packet.getStatus();
-        if (status == null) return;
-        if ("SUCCESS".equalsIgnoreCase(status)) {
-            PaymentsAndQRCodeManager.inst().markDone(providerOrderId, amountMinorToPrice(packet.getAmountMinor()));
-            return;
-        }
-        if (isTerminalFailureStatus(status)) {
-            String reason = "";
-            if (packet.getExtra() != null) {
-                reason = packet.getExtra().getOrDefault("reason", "");
-            }
-            if (reason == null || reason.trim().isEmpty()) {
-                reason = status;
-            }
-            PaymentsAndQRCodeManager.inst().markCancelled(providerOrderId, reason);
-        }
-    }
-
-    private static boolean isTerminalFailureStatus(String status) {
-        String normalized = status.trim().toUpperCase(Locale.ROOT);
-        return normalized.equals("CANCELLED") || normalized.equals("FAILED") || normalized.equals("EXPIRED") || normalized.equals("UNKNOWN");
-    }
-
-    private static String amountMinorToPrice(long amountMinor) {
-        return String.format(Locale.ROOT, "%.2f", amountMinor / 100.0);
     }
 
     @Override
     public void reloadConfig(MemoryConfiguration config) {
-        String url = config.getString("backend-host");
-        reload(url);
+        reload(null);
     }
 
     private void reload(@Nullable String url) {
