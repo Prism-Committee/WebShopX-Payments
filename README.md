@@ -1,4 +1,4 @@
-Based on [SweetCheckout](https://github.com/MrXiaoM/SweetCheckout) under the AGPL-3.0 license.
+This plugin is based on [SweetCheckout](https://github.com/MrXiaoM/SweetCheckout), licensed under AGPL-3.0.
 
 # WebShopX-Payments / WSXPay
 
