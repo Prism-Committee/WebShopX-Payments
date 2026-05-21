@@ -17,13 +17,17 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.logging.Level;
 
 @SuppressWarnings({"FieldMayBeFinal", "FieldCanBeLocal"})
 public class Configuration {
     private static Logger logger = LoggerFactory.getLogger(Configuration.class);
     @SerializedName("debug")
     private boolean debug = false;
+    @SerializedName("log_level")
+    private String logLevel = "INFO";
     @SerializedName("port")
     private int port = 62233;
     @SerializedName("proxy")
@@ -66,6 +70,52 @@ public class Configuration {
 
     public boolean isDebug() {
         return debug;
+    }
+
+    public String getLogLevel() {
+        return logLevel;
+    }
+
+    public Level resolveLogLevel() {
+        if (logLevel == null) {
+            return Level.INFO;
+        }
+        String normalized = logLevel.trim().toUpperCase(Locale.ROOT);
+        if (normalized.isEmpty()) {
+            return Level.INFO;
+        }
+        switch (normalized) {
+            case "WARN":
+            case "WARNING":
+                return Level.WARNING;
+            case "ERROR":
+            case "SEVERE":
+                return Level.SEVERE;
+            case "DEBUG":
+                return Level.FINE;
+            case "TRACE":
+                return Level.FINEST;
+            case "INFO":
+                return Level.INFO;
+            case "CONFIG":
+                return Level.CONFIG;
+            case "FINE":
+                return Level.FINE;
+            case "FINER":
+                return Level.FINER;
+            case "FINEST":
+                return Level.FINEST;
+            case "OFF":
+                return Level.OFF;
+            case "ALL":
+                return Level.ALL;
+            default:
+                try {
+                    return Level.parse(normalized);
+                } catch (IllegalArgumentException ignored) {
+                    return Level.INFO;
+                }
+        }
     }
 
     public int getPort() {

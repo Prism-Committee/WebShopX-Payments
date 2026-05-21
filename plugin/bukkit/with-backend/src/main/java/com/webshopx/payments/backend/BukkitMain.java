@@ -10,11 +10,21 @@ import java.io.File;
 public class BukkitMain extends CommonMain<LocalClientInfo, PluginPaymentServer> {
     private final PluginPaymentServer server;
     private LocalPaymentClient client;
+    private final java.util.logging.Logger julLogger;
 
     public BukkitMain(java.util.logging.Logger logger, File dataFolder) {
         super(new LoggerAdapter(logger), dataFolder);
+        this.julLogger = logger;
         reloadConfig();
         this.server = new PluginPaymentServer(this, getLogger());
+    }
+
+    @Override
+    public void reloadConfig() {
+        super.reloadConfig();
+        if (config != null) {
+            julLogger.setLevel(config.resolveLogLevel());
+        }
     }
 
     public void beforePluginReloadConfig() {
