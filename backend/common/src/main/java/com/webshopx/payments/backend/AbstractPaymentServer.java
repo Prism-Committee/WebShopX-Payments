@@ -104,6 +104,14 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
         request.setPrice(String.format("%.2f", priceDouble));
 
         Configuration config = getConfig();
+        String currency = normalizeCurrency(request.getCurrency());
+        if (currency == null) {
+            return new PaymentOrderResponse("payment.invalid-currency");
+        }
+        request.setCurrency(currency);
+        if (!isCurrencySupported(request.getMethod(), currency)) {
+            return new PaymentOrderResponse("payment.currency-unsupported");
+        }
 
         // 防止多次请求订单
         if (client.getOrderByPlayer(request.getPlayerName()) != null) {
@@ -159,7 +167,13 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
         if (method == null) {
             return new PacketPluginCreatePayment.Response("payment.type-unknown");
         }
-        Configuration config = getConfig();
+        String currency = normalizeCurrency(packet.getCurrency());
+        if (currency == null) {
+            return new PacketPluginCreatePayment.Response("payment.invalid-currency");
+        }
+        if (!isCurrencySupported(method, currency)) {
+            return new PacketPluginCreatePayment.Response("payment.currency-unsupported");
+        }
         String playerName = "wsxpay:" + packet.getMerchantOrderId();
         PaymentOrderRequest request = new PaymentOrderRequest(
                 playerName,
@@ -168,7 +182,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
                 amountMinorToPrice(packet.getAmountMinor()),
                 false,
                 packet.getDescription(),
-                packet.getCurrency(),
+                currency,
                 packet.getReturnUrl(),
                 packet.getNotifyUrl(),
                 packet.getExpiresAt()
@@ -191,7 +205,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
                 paymentUrl,
                 qrCodeUrl,
                 actualAmountMinor,
-                currencyForMethod(method),
+                currency,
                 method,
                 response.getSubType(),
                 packet.getExpiresAt(),
@@ -239,7 +253,7 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
                 null,
                 null,
                 priceToAmountMinor(order.getMoney()),
-                currencyForMethod(method),
+                order.getCurrency(),
                 0L,
                 0L,
                 Collections.emptyMap()
@@ -257,6 +271,12 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
 
     private static String amountMinorToPrice(long amountMinor) {
         return BigDecimal.valueOf(amountMinor, 2).setScale(2, RoundingMode.UNNECESSARY).toPlainString();
+    }
+
+    private static String normalizeCurrency(String currency) {
+        if (currency == null) return null;
+        String trimmed = currency.trim();
+        return trimmed.isEmpty() ? null : trimmed.toUpperCase(Locale.ROOT);
     }
 
     private static long priceToAmountMinor(String price) {
@@ -300,13 +320,12 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
     public void sendPaymentSuccess(@NotNull C client, @NotNull ClientInfo.Order<C> order, @NotNull String money) {
         Map<String, String> extra = new LinkedHashMap<>();
         extra.put("source", "backend");
-        String currency = currencyForMethod(order.getType());
         send(client, new PacketBackendPaymentEvent(
                 null,
                 order.getId(),
                 "SUCCESS",
                 priceToAmountMinor(money),
-                currency,
+                order.getCurrency(),
                 order.getType(),
                 null,
                 System.currentTimeMillis(),
@@ -319,13 +338,12 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
         Map<String, String> extra = new LinkedHashMap<>();
         extra.put("source", "backend");
         extra.put("reason", reason);
-        String currency = currencyForMethod(order.getType());
         send(client, new PacketBackendPaymentEvent(
                 null,
                 order.getId(),
                 statusFromCancelReason(reason),
                 priceToAmountMinor(order.getMoney()),
-                currency,
+                order.getCurrency(),
                 order.getType(),
                 null,
                 0L,
@@ -343,6 +361,12 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
     }
 
     private String currencyForMethod(String method) {
+        if ("wechat".equalsIgnoreCase(method)) {
+            return getConfig().getWeChatNative().getCurrency();
+        }
+        if ("alipay".equalsIgnoreCase(method)) {
+            return getConfig().getAlipayFaceToFace().getCurrency();
+        }
         if ("paypal".equalsIgnoreCase(method)) {
             return getConfig().getPaypal().getCurrency();
         }
@@ -350,6 +374,11 @@ public abstract class AbstractPaymentServer<C extends ClientInfo<C>> {
             return getConfig().getMercadoPago().getCurrency();
         }
         return "CNY";
+    }
+
+    private boolean isCurrencySupported(String method, String currency) {
+        if (method == null || currency == null) return false;
+        return currency.equalsIgnoreCase(currencyForMethod(method));
     }
 
     public void onMessage(C client, String s) {

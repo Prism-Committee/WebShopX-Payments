@@ -1,0 +1,46 @@
+########################
+# WebShopX-Payments
+########################
+
+# WebShopXPaymentApi provider id.
+provider-id: webshopx-payments
+
+# Backend address. The with-backend build starts an embedded backend, so this
+# can usually stay commented. Only set this if you later add an external backend.
+# backend-host: 'ws://127.0.0.1:62233'
+
+map-item:
+  # Virtual map id for QR code display.
+  id: 20070831
+  name: '&e&lScan QR Code'
+  lore:
+    - '&7Scan the payment QR code image'
+  custom-model-data: unset
+  colors:
+    light:
+      base: 8
+      modifier: 2
+    dark:
+      base: 29
+      modifier: 3
+
+payment:
+  # Default method when WebShopX requests AUTO.
+  # Supported values: alipay, wechat, paypal, mercadopago.
+  default-method: alipay
+  # Seconds to wait for a synchronous WebShopXPaymentApi backend response.
+  api-timeout-seconds: 15
+  enable:
+    wechat: true
+    alipay: true
+    paypal: true
+    mercadopago: false
+  # Payment timeout in seconds.
+  timeout: 120
+  # Used by Hook payments only. Official provider integrations ignore this.
+  allow-increasing: false
+  action-bar:
+    process: '&fPlease finish payment in &b%timeout%s'
+    done: '&aPayment completed'
+    timeout: '&ePayment timed out'
+    cancel: '&ePayment cancelled'

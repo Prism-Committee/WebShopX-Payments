@@ -100,9 +100,12 @@ public class Configuration {
         return hook;
     }
 
-    private static AlipayConfig initAlipayConfig(String appId, String privateKey, String publicKey) {
+    private static AlipayConfig initAlipayConfig(String appId, String privateKey, String publicKey, String serverUrl) {
+        String resolvedServerUrl = serverUrl == null || serverUrl.trim().isEmpty()
+                ? "https://openapi.alipay.com/gateway.do"
+                : serverUrl.trim();
         AlipayConfig alipayConfig = new AlipayConfig();
-        alipayConfig.setServerUrl("https://openapi.alipay.com/gateway.do");
+        alipayConfig.setServerUrl(resolvedServerUrl);
         alipayConfig.setAppId(appId);
         alipayConfig.setPrivateKey(privateKey);
         alipayConfig.setFormat("json");
@@ -195,6 +198,8 @@ public class Configuration {
         private boolean enable = false;
         @SerializedName("host")
         private String host = "https://api.mch.weixin.qq.com";
+        @SerializedName("currency")
+        private String currency = "CNY";
         @SerializedName("app_id")
         private String appId = "WECHAT_APP_ID";
         @SerializedName("merchant_id")
@@ -250,6 +255,10 @@ public class Configuration {
             return config;
         }
 
+        public String getCurrency() {
+            return currency == null || currency.trim().isEmpty() ? "CNY" : currency.trim().toUpperCase();
+        }
+
         public ProxySettings getProxy() {
             return proxy;
         }
@@ -258,6 +267,10 @@ public class Configuration {
     @SuppressWarnings({"FieldMayBeFinal", "FieldCanBeLocal"})
     public static class AlipayFaceToFace {
         private boolean enable = false;
+        @SerializedName("host")
+        private String host = "https://openapi.alipay.com/gateway.do";
+        @SerializedName("currency")
+        private String currency = "CNY";
         @SerializedName("app_id")
         private String appId = "";
         @SerializedName("private_key")
@@ -288,7 +301,7 @@ public class Configuration {
                     this.config = null;
                     return;
                 }
-                this.config = initAlipayConfig(getAppId(), privateKey, publicKey);
+                this.config = initAlipayConfig(getAppId(), privateKey, publicKey, host);
             } else {
                 this.config = null;
             }
@@ -300,6 +313,10 @@ public class Configuration {
 
         public String getAppId() {
             return appId;
+        }
+
+        public String getHost() {
+            return host;
         }
 
         public String getPrivateKey() {
@@ -320,6 +337,10 @@ public class Configuration {
 
         public String getSellerId() {
             return sellerId;
+        }
+
+        public String getCurrency() {
+            return currency == null || currency.trim().isEmpty() ? "CNY" : currency.trim().toUpperCase();
         }
 
         public AlipayConfig getConfig() {
@@ -515,7 +536,7 @@ public class Configuration {
                     this.config = null;
                     return;
                 }
-                this.config = initAlipayConfig(getAppId(), privateKey, publicKey);
+                this.config = initAlipayConfig(getAppId(), privateKey, publicKey, null);
             } else {
                 this.config = null;
             }

@@ -62,7 +62,7 @@ public class PaymentPaypal<C extends ClientInfo<C>> {
                 server.getLogger().info("[DEBUG] PayPal create order response: {}", createdOrder.raw);
             }
 
-            ClientInfo.Order<C> order = client.createOrder(orderId, "paypal", request.getPlayerName(), request.getPrice());
+            ClientInfo.Order<C> order = client.createOrder(orderId, "paypal", request.getPlayerName(), request.getPrice(), request.getCurrency());
             String outTradeNo = createdOrder.id;
             order.setCancelAction(() -> cancelOrder(outTradeNo));
             order.setTask(new TimerTask() {

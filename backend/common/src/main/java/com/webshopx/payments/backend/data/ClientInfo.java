@@ -13,15 +13,17 @@ public abstract class ClientInfo<C extends ClientInfo<C>> {
         String type;
         String playerName;
         String money;
+        String currency;
         TimerTask task = null;
         Runnable cancelAction = null;
 
-        private Order(C client, String id, String type, String playerName, String money) {
+        private Order(C client, String id, String type, String playerName, String money, String currency) {
             this.client = client;
             this.id = id;
             this.type = type;
             this.playerName = playerName;
             this.money = money;
+            this.currency = currency;
         }
 
         public TimerTask getTask() {
@@ -56,6 +58,10 @@ public abstract class ClientInfo<C extends ClientInfo<C>> {
             return money;
         }
 
+        public String getCurrency() {
+            return currency;
+        }
+
         public C getClient() {
             return client;
         }
@@ -76,8 +82,8 @@ public abstract class ClientInfo<C extends ClientInfo<C>> {
         return (C) this;
     }
 
-    public Order<C> createOrder(String id, String type, String playerName, String money) {
-        Order<C> order = new Order<>($this(), id, type, playerName, money);
+    public Order<C> createOrder(String id, String type, String playerName, String money, String currency) {
+        Order<C> order = new Order<>($this(), id, type, playerName, money, currency);
         addOrder(order);
         return order;
     }

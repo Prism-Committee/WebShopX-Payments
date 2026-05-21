@@ -50,7 +50,7 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
         }
         String orderId = client.nextOrderId();
         String paymentUrl = hook.getPaymentUrl(money);
-        ClientInfo.Order<C> order = client.createOrder(orderId, "alipay", request.getPlayerName(), money);
+        ClientInfo.Order<C> order = client.createOrder(orderId, "alipay", request.getPlayerName(), money, request.getCurrency());
         moneyLocked.put(money, order);
 
         String startTime = LocalDateTime.now().format(POLLING_FORMAT);
@@ -96,7 +96,7 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
                 server.getLogger().info("[DEBUG] 支付宝 订单码支付 下单结果: {}", response);
             }
             if (response.isSuccess()) {
-                ClientInfo.Order<C> order = client.createOrder(orderId, "alipay", request.getPlayerName(), request.getPrice());
+                ClientInfo.Order<C> order = client.createOrder(orderId, "alipay", request.getPlayerName(), request.getPrice(), request.getCurrency());
                 String outTradeNo = response.getOutTradeNo();
                 order.setCancelAction(() -> cancelAlipayFaceToFace(outTradeNo));
                 // 轮询检查是否交易成功
@@ -132,7 +132,7 @@ public class PaymentAlipay<C extends ClientInfo<C>> {
         String randomId = UUID.randomUUID().toString().replace("-", "");
         String qrcodeURL = generateQRCode(uid, request.getPrice(), randomId);
         String startTime = LocalDateTime.now().format(POLLING_FORMAT);
-        ClientInfo.Order<C> order = client.createOrder(orderId, "alipay", request.getPlayerName(), request.getPrice());
+        ClientInfo.Order<C> order = client.createOrder(orderId, "alipay", request.getPlayerName(), request.getPrice(), request.getCurrency());
         order.setCancelAction(() -> {/* 轮询模式关闭订单无需进行任何操作，丢弃这个二维码即可 */});
         // 轮询检查是否交易成功
         order.setTask(new TimerTask() {

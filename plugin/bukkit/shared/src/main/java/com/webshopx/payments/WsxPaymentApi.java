@@ -77,9 +77,10 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
 
     public Set<String> supportedCurrencies() {
         Set<String> currencies = new java.util.LinkedHashSet<>();
-        if (isMethodEnabled("alipay") || isMethodEnabled("wechat")) currencies.add("CNY");
-        if (isMethodEnabled("paypal")) currencies.add(configCurrency("methods.paypal.currency", "USD"));
-        if (isMethodEnabled("mercadopago")) currencies.add(configCurrency("methods.mercadopago.currency", "BRL"));
+        if (isMethodEnabled("alipay")) currencies.add(plugin.resolvePaymentCurrency("alipay", "CNY"));
+        if (isMethodEnabled("wechat")) currencies.add(plugin.resolvePaymentCurrency("wechat", "CNY"));
+        if (isMethodEnabled("paypal")) currencies.add(plugin.resolvePaymentCurrency("paypal", "USD"));
+        if (isMethodEnabled("mercadopago")) currencies.add(plugin.resolvePaymentCurrency("mercadopago", "BRL"));
         currencies.removeIf(value -> value == null || value.trim().isEmpty());
         return Collections.unmodifiableSet(currencies);
     }
@@ -141,8 +142,11 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
             record.methodCode = response.getMethod();
             record.backendMethodCode = response.getMethodCode();
             record.amountMinor = response.getActualAmountMinor() > 0L ? response.getActualAmountMinor() : request.getAmountMinor();
-            record.currency = normalizeCurrency(response.getCurrency());
-            if (record.currency == null) record.currency = currency;
+            record.currency = currency;
+            String responseCurrency = normalizeCurrency(response.getCurrency());
+            if (responseCurrency != null && !responseCurrency.equals(record.currency)) {
+                record.extra.put("currency.mismatch.create", responseCurrency);
+            }
             record.payUrl = response.getPaymentUrl();
             record.qrCodeUrl = qrCodeDataUrl(firstNonBlank(response.getQrCodeUrl(), response.getPaymentUrl()));
             record.expiresAt = response.getExpiresAt() > 0L ? Instant.ofEpochMilli(response.getExpiresAt()) : request.getExpiresAt();
@@ -176,7 +180,14 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
                 if (response.getError() == null || response.getError().isEmpty()) {
                     record.status = statusFromString(response.getStatus());
                     if (response.getAmountMinor() > 0L) record.amountMinor = response.getAmountMinor();
-                    if (trimToNull(response.getCurrency()) != null) record.currency = response.getCurrency();
+                    String responseCurrency = normalizeCurrency(response.getCurrency());
+                    if (responseCurrency != null) {
+                        if (record.currency == null) {
+                            record.currency = responseCurrency;
+                        } else if (!record.currency.equals(responseCurrency)) {
+                            record.extra.put("currency.mismatch.query", responseCurrency);
+                        }
+                    }
                     if (response.getExpiresAt() > 0L) record.expiresAt = Instant.ofEpochMilli(response.getExpiresAt());
                     if (response.getPaidAt() > 0L) record.paidAt = Instant.ofEpochMilli(response.getPaidAt());
                     record.extra.putAll(response.getExtra());
@@ -219,7 +230,14 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
         if (record.status == newStatus && record.notified) return;
         record.status = newStatus;
         record.amountMinor = event.getAmountMinor() > 0L ? event.getAmountMinor() : record.amountMinor;
-        record.currency = normalizeCurrency(event.getCurrency()) == null ? record.currency : normalizeCurrency(event.getCurrency());
+        String eventCurrency = normalizeCurrency(event.getCurrency());
+        if (eventCurrency != null) {
+            if (record.currency == null) {
+                record.currency = eventCurrency;
+            } else if (!record.currency.equals(eventCurrency)) {
+                record.extra.put("currency.mismatch.event", eventCurrency);
+            }
+        }
         record.method = methodFromCode(event.getMethod());
         record.methodCode = event.getMethod();
         if (event.getPaidAt() > 0L) record.paidAt = Instant.ofEpochMilli(event.getPaidAt());
@@ -287,11 +305,6 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
             return plugin.getConfig().getBoolean("methods." + lower + ".enabled");
         }
         return plugin.getConfig().getBoolean("payment.enable." + lower);
-    }
-
-    private String configCurrency(String path, String fallback) {
-        String value = trimToNull(plugin.getConfig().getString(path));
-        return value == null ? fallback : value.toUpperCase(Locale.ROOT);
     }
 
     private String resolveMethodCode(PaymentMethod method, String methodCode) {
@@ -510,6 +523,7 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
     private static String mapBackendError(String error) {
         String lower = error == null ? "" : error.toLowerCase(Locale.ROOT);
         if (lower.contains("not-a-number") || lower.contains("invalid-amount")) return "INVALID_AMOUNT";
+        if (lower.contains("currency")) return "INVALID_CURRENCY";
         if (lower.contains("type-unknown")) return "METHOD_UNSUPPORTED";
         if (lower.contains("not-found")) return "ORDER_NOT_FOUND";
         if (lower.contains("timeout")) return "UPSTREAM_TIMEOUT";

@@ -76,6 +76,10 @@ public class PaymentOrderRequest {
         return currency;
     }
 
+    public void setCurrency(String currency) {
+        this.currency = currency;
+    }
+
     public String getReturnUrl() {
         return returnUrl;
     }

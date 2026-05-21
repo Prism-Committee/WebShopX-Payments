@@ -46,7 +46,7 @@ public class PaymentMercadoPago<C extends ClientInfo<C>> {
             if (config.isDebug()) {
                 server.getLogger().info("[DEBUG] MercadoPago create preference response: {}", preference.raw);
             }
-            ClientInfo.Order<C> order = client.createOrder(orderId, "mercadopago", request.getPlayerName(), request.getPrice());
+            ClientInfo.Order<C> order = client.createOrder(orderId, "mercadopago", request.getPlayerName(), request.getPrice(), request.getCurrency());
             order.setCancelAction(() -> {
                 // Checkout Pro preferences are left to expire upstream.
             });

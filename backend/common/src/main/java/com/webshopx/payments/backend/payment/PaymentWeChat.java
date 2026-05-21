@@ -56,7 +56,7 @@ public class PaymentWeChat<C extends ClientInfo<C>> {
         }
         String orderId = client.nextOrderId();
         String paymentUrl = hook.getPaymentUrl(money);
-        ClientInfo.Order<C> order = client.createOrder(orderId, "wechat", request.getPlayerName(), money);
+        ClientInfo.Order<C> order = client.createOrder(orderId, "wechat", request.getPlayerName(), money, request.getCurrency());
         moneyLocked.put(money, order);
         server.getLogger().info("WeChat Hook order created: merchantOrderId={}, amount={}", orderId, money);
         return new PaymentOrderResponse("hook", orderId, order.getMoney(), paymentUrl);
@@ -79,7 +79,7 @@ public class PaymentWeChat<C extends ClientInfo<C>> {
         prepayRequest.notifyUrl = config.getWeChatNative().getNotifyUrl();
         prepayRequest.amount = new NativePrepay.CommonAmountInfo();
         prepayRequest.amount.total = priceWeChat;
-        prepayRequest.amount.currency = "CNY";
+        prepayRequest.amount.currency = request.getCurrency();
 
         NativePrepay.Response response;
         try {
@@ -93,7 +93,7 @@ public class PaymentWeChat<C extends ClientInfo<C>> {
             return new PaymentOrderResponse("payment.internal-error");
         }
 
-        ClientInfo.Order<C> order = client.createOrder(orderId, "wechat", request.getPlayerName(), request.getPrice());
+        ClientInfo.Order<C> order = client.createOrder(orderId, "wechat", request.getPlayerName(), request.getPrice(), request.getCurrency());
         order.setCancelAction(() -> cancelWeChatNative(orderId));
         order.setTask(new TimerTask() {
             @Override

@@ -22,6 +22,7 @@ import com.webshopx.payments.nms.NMS;
 import java.io.File;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.util.Locale;
 import java.util.List;
 
 public abstract class PluginCommon extends BukkitPlugin {
@@ -79,6 +80,10 @@ public abstract class PluginCommon extends BukkitPlugin {
     }
 
     public abstract PaymentClient handlePaymentReload(PaymentAPI parent, @Nullable String url) throws URISyntaxException;
+
+    public String resolvePaymentCurrency(@NotNull String method, @NotNull String fallback) {
+        return fallback.trim().toUpperCase(Locale.ROOT);
+    }
 
     @Override
     public Class<?> getConstructorType() {

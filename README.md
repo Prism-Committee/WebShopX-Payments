@@ -82,8 +82,8 @@ out/WebShopX-Payments-bukkit-with-backend-<version>.jar
 
 - `paypal`：PayPal REST API 凭据、接口地址、币种、代理
 - `mercadopago`：MercadoPago Access Token、接口地址、币种、Checkout Pro 返回/通知地址、代理
-- `wechat_native`：微信 Native 商户凭据、通知地址、代理
-- `alipay_face2face`：支付宝当面付凭据、产品码、代理
+- `wechat_native`：微信 Native 商户凭据、币种、通知地址、代理
+- `alipay_face2face`：支付宝当面付凭据、币种、产品码、代理
 - `hook`：可选的 Hook HTTP 接口和个人收款码匹配设置
 
 不要把生产密钥、商户私钥、client secret 等敏感信息提交到源码仓库。
