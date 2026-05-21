@@ -1,4 +1,4 @@
-import com.github.jengelman.gradle.plugins.shadow.transformers.AppendingTransformer
+﻿import com.github.jengelman.gradle.plugins.shadow.transformers.AppendingTransformer
 import com.github.jengelman.gradle.plugins.shadow.transformers.Log4j2PluginsCacheFileTransformer
 import com.github.jengelman.gradle.plugins.shadow.transformers.ServiceFileTransformer
 
@@ -84,7 +84,7 @@ tasks {
     val copyTask = this.register<Copy>("copyBuildArtifact") {
         dependsOn(shadowJar)
         from(shadowJar.get().outputs)
-        rename { "WebShopX-Payments-bukkit-with-backend-$version.jar" }
+        rename { "WebShopX-Payments-$version-full.jar" }
         into(rootProject.file("out"))
     }
     build {
@@ -101,3 +101,4 @@ tasks {
         }
     }
 }
+

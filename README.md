@@ -46,13 +46,13 @@ $env:JAVA_TOOL_OPTIONS='-Duser.country=US'
 构建产物：
 
 ```text
-out/WebShopX-Payments-bukkit-with-backend-<version>.jar
+out/WebShopX-Payments-<version>-full.jar
 ```
 
 ## 部署
 
 1. 将 WebShopX 放入服务端 `plugins/` 目录。
-2. 将 `WebShopX-Payments-bukkit-with-backend-<version>.jar` 放入同一个 `plugins/` 目录。
+2. 将 `WebShopX-Payments-<version>-full.jar` 放入同一个 `plugins/` 目录。
 3. 启动一次服务端，生成默认配置。
 4. 修改 `plugins/WebShopX-Payments/config.yml`。
 5. 修改 `plugins/WebShopX-Payments/backend/config.json`。
@@ -123,3 +123,4 @@ out/WebShopX-Payments-bukkit-with-backend-<version>.jar
 - [alipay/alipay-sdk-java-all](https://github.com/alipay/alipay-sdk-java-all)
 - [wechatpay-apiv3/wechatpay-java](https://github.com/wechatpay-apiv3/wechatpay-java)
 - [eealba/payper](https://github.com/eealba/payper)
+

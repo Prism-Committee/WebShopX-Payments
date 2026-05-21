@@ -1,0 +1,453 @@
+﻿name: CI, Build and Release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - '*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  JAVA_VERSION: '21'
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }}, JDK ${{ matrix.java }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        java: ['21']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: gradle
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run unit tests (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon clean test
+
+      - name: Run unit tests (Windows)
+        if: runner.os == 'Windows'
+        run: .\gradlew.bat --no-daemon clean test
+
+      - name: Upload test reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.os }}-java-${{ matrix.java }}
+          path: '**/build/reports/'
+          if-no-files-found: warn
+          retention-days: 14
+
+  build-hooks:
+    name: Build WeChat Hooks
+    runs-on: windows-2025
+    needs: [test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+        with:
+          nuget-version: '6.x'
+
+      - name: Build wechat-hook v3
+        shell: powershell
+        run: |
+          mkdir out
+          cd wechat-hook/v3
+          mkdir Out
+          nuget restore Hook.sln
+          msbuild Hook.sln /p:Configuration=Release
+
+          echo "# Hook endpoint URL" >> Out/config.properties
+          echo "api_url=http://127.0.0.1:62233/api/hook/receive" >> Out/config.properties
+
+          cp LICENSE Out/LICENSE
+          cd Out
+          Compress-Archive -Path '*' -DestinationPath '../../../out/WeChat-Hook-v3.zip'
+          cd ../../../
+
+      - name: Build wechat-hook v4
+        shell: powershell
+        run: |
+          cd wechat-hook/v4
+          mkdir Out
+          cmd /c build.cmd
+
+          echo "# WSXPay Hook configuration" >> Out/config.properties
+          echo "api_url=http://127.0.0.1:62233/api/hook/receive" >> Out/config.properties
+          echo "wechat_key=" >> Out/config.properties
+          echo "database_folder=auto" >> Out/config.properties
+
+          cp LICENSE Out/LICENSE
+          cd Out
+          Compress-Archive -Path '*' -DestinationPath '../../../out/WeChat-Hook-v4.zip'
+          cd ../../../
+
+      - name: Upload hook artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hook-artifacts
+          path: out/WeChat-Hook-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  build-plugin:
+    name: Build Plugin Artifact
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve build metadata
+        id: meta
+        shell: bash
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          if [[ "${TAG_NAME}" == v* ]]; then
+            BUILD_VERSION="${TAG_NAME#v}"
+          else
+            BUILD_VERSION="${TAG_NAME}"
+          fi
+          echo "build_version=${BUILD_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved build version: ${BUILD_VERSION}"
+
+      - name: Build plugin with backend
+        run: ./gradlew --no-daemon clean :plugin:bukkit:with-backend:build -Pver="${{ steps.meta.outputs.build_version }}"
+
+      - name: Verify expected artifact
+        shell: bash
+        run: |
+          shopt -s nullglob
+          plugin=(out/WebShopX-Payments-*-full.jar)
+          if (( ${#plugin[@]} == 0 )); then
+            echo "::error::Missing plugin artifact under out/."
+            exit 1
+          fi
+
+      - name: Upload plugin artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-artifacts
+          path: out/WebShopX-Payments-*-full.jar
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish Release to Current Repository
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    needs: [build-hooks, build-plugin]
+    env:
+      TAG_NAME: ${{ github.ref_name }}
+    steps:
+      - name: Download plugin artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: plugin-artifacts
+          path: out
+
+      - name: Download hook artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: hook-artifacts
+          path: out
+
+      - name: Resolve release type
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${TAG_NAME}" == v* ]]; then
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          plugin=(out/WebShopX-Payments-*-full.jar)
+          hook3=(out/WeChat-Hook-v3.zip)
+          hook4=(out/WeChat-Hook-v4.zip)
+
+          {
+            echo "## Release Assets"
+            echo
+            echo "| Type | File |"
+            echo "| ---- | ---- |"
+            if (( ${#plugin[@]} > 0 )); then
+              p="$(basename "${plugin[0]}")"
+              echo "| Plugin (with backend) | [${p}](https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/${p}) |"
+            fi
+            if (( ${#hook3[@]} > 0 )); then
+              h3="$(basename "${hook3[0]}")"
+              echo "| WeChat Hook v3 | [${h3}](https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/${h3}) |"
+            fi
+            if (( ${#hook4[@]} > 0 )); then
+              h4="$(basename "${hook4[0]}")"
+              echo "| WeChat Hook v4 | [${h4}](https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/${h4}) |"
+            fi
+          } > release-notes.md
+
+      - name: Publish release to current repository
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(out/*)
+          if (( ${#files[@]} == 0 )); then
+            echo "::error::No release artifacts found under out/."
+            exit 1
+          fi
+
+          if gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${TAG_NAME} already exists in ${GITHUB_REPOSITORY}, updating assets..."
+            gh release upload "${TAG_NAME}" "${files[@]}" --repo "${GITHUB_REPOSITORY}" --clobber
+            if [[ "${{ steps.meta.outputs.is_prerelease }}" == "true" ]]; then
+              gh release edit "${TAG_NAME}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --title "Pre-release ${TAG_NAME}" \
+                --notes-file release-notes.md \
+                --prerelease
+            else
+              gh release edit "${TAG_NAME}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --title "Release ${TAG_NAME}" \
+                --notes-file release-notes.md
+            fi
+          else
+            if [[ "${{ steps.meta.outputs.is_prerelease }}" == "true" ]]; then
+              gh release create "${TAG_NAME}" "${files[@]}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --target "${GITHUB_SHA}" \
+                --title "Pre-release ${TAG_NAME}" \
+                --notes-file release-notes.md \
+                --prerelease
+            else
+              gh release create "${TAG_NAME}" "${files[@]}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --title "Release ${TAG_NAME}" \
+                --notes-file release-notes.md
+            fi
+          fi
+
+#  publish-curseforge:
+#    name: Publish Plugin Artifact to CurseForge
+#    if: startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref_name, 'dev')
+#    runs-on: ubuntu-latest
+#    needs: [build-plugin, release]
+#    env:
+#      CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+#      CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+#      CURSEFORGE_GAME_ENDPOINT: ${{ vars.CURSEFORGE_GAME_ENDPOINT }}
+#    steps:
+#      - name: Download plugin artifacts
+#        uses: actions/download-artifact@v4
+#        with:
+#          name: plugin-artifacts
+#          path: out
+#
+#      - name: Resolve CurseForge metadata
+#        id: cf-meta
+#        shell: bash
+#        run: |
+#          set -euo pipefail
+#          if [[ -z "${CURSEFORGE_TOKEN:-}" || -z "${CURSEFORGE_PROJECT_ID:-}" ]]; then
+#            echo "enabled=false" >> "$GITHUB_OUTPUT"
+#            echo "::warning::Missing CURSEFORGE_TOKEN or CURSEFORGE_PROJECT_ID, skipping CurseForge publish."
+#            exit 0
+#          fi
+#          TAG_NAME="${GITHUB_REF#refs/tags/}"
+#          if [[ "${TAG_NAME}" == v* ]]; then
+#            echo "release_type=release" >> "$GITHUB_OUTPUT"
+#          else
+#            echo "release_type=beta" >> "$GITHUB_OUTPUT"
+#          fi
+#          if [[ -z "${CURSEFORGE_GAME_ENDPOINT:-}" ]]; then
+#            echo "game_endpoint=bukkit" >> "$GITHUB_OUTPUT"
+#          else
+#            echo "game_endpoint=${CURSEFORGE_GAME_ENDPOINT}" >> "$GITHUB_OUTPUT"
+#          fi
+#          echo "enabled=true" >> "$GITHUB_OUTPUT"
+#
+#      - name: Resolve CurseForge artifact path
+#        id: cf-files
+#        if: steps.cf-meta.outputs.enabled == 'true'
+#        shell: bash
+#        run: |
+#          set -euo pipefail
+#          shopt -s nullglob
+#          plugin=(out/WebShopX-Payments-*-full.jar)
+#          if (( ${#plugin[@]} == 0 )); then
+#            echo "::error::Missing plugin artifact for CurseForge upload."
+#            exit 1
+#          fi
+#          echo "plugin_file=${plugin[0]}" >> "$GITHUB_OUTPUT"
+#
+#      - name: Upload plugin artifact
+#        if: steps.cf-meta.outputs.enabled == 'true'
+#        uses: itsmeow/curseforge-upload@v3.1.2
+#        with:
+#          token: ${{ env.CURSEFORGE_TOKEN }}
+#          project_id: ${{ env.CURSEFORGE_PROJECT_ID }}
+#          game_endpoint: ${{ steps.cf-meta.outputs.game_endpoint }}
+#          file_path: ${{ steps.cf-files.outputs.plugin_file }}
+#          release_type: ${{ steps.cf-meta.outputs.release_type }}
+#          changelog_type: markdown
+#          changelog: |
+#            由 GitHub 标签 `${{ github.ref_name }}` 自动发布。
+#            完整更新信息请查看 GitHub Release 页面：
+#            https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+
+  publish-modrinth:
+    name: Publish Plugin Artifact to Modrinth
+    if: startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref_name, 'dev')
+    runs-on: ubuntu-latest
+    needs: [build-plugin, release]
+    env:
+      MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+      MODRINTH_PROJECT_ID: ${{ vars.MODRINTH_PROJECT_ID }}
+    steps:
+      - name: Download plugin artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: plugin-artifacts
+          path: out
+
+      - name: Publish to Modrinth
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          if [[ -z "${MODRINTH_TOKEN:-}" ]]; then
+            echo "::warning::Missing secret MODRINTH_TOKEN, skipping Modrinth publish."
+            exit 0
+          fi
+          if [[ -z "${MODRINTH_PROJECT_ID:-}" ]]; then
+            echo "::warning::Missing repository variable MODRINTH_PROJECT_ID, skipping Modrinth publish."
+            exit 0
+          fi
+
+          plugin=(out/WebShopX-Payments-*-full.jar)
+          if (( ${#plugin[@]} == 0 )); then
+            echo "::error::Missing plugin artifact required for Modrinth publish."
+            exit 1
+          fi
+
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          if [[ "${TAG_NAME}" == v* ]]; then
+            BASE_VERSION="${TAG_NAME#v}"
+            VERSION_TYPE="release"
+          else
+            BASE_VERSION="${TAG_NAME}"
+            VERSION_TYPE="beta"
+          fi
+
+          changelog=$(
+            cat <<EOF
+          由 GitHub 标签 \`${TAG_NAME}\` 自动发布。
+
+          完整更新信息请查看 GitHub Release 页面：
+          https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME}
+          EOF
+          )
+
+          game_versions_json=$(
+            curl -sSf "https://api.modrinth.com/v2/tag/game_version" \
+              | jq -c '
+                  [ .[]
+                    | select(.version_type == "release")
+                    | .version
+                    | select(test("^\\d+\\.\\d+(\\.\\d+)?$"))
+                  ]
+                  | unique
+                  | sort_by(split(".") | map(tonumber))
+                '
+          )
+
+          payload=$(
+            jq -cn \
+              --arg project_id "${MODRINTH_PROJECT_ID}" \
+              --arg version_number "${BASE_VERSION}" \
+              --arg version_title "${BASE_VERSION} (with-backend)" \
+              --arg changelog "${changelog}" \
+              --arg version_type "${VERSION_TYPE}" \
+              --argjson game_versions "${game_versions_json}" \
+              '{
+                project_id: $project_id,
+                version_number: $version_number,
+                name: $version_title,
+                changelog: $changelog,
+                version_type: $version_type,
+                loaders: ["paper","purpur","spigot","bukkit","folia"],
+                game_versions: $game_versions,
+                dependencies: [],
+                featured: false,
+                status: "listed",
+                file_parts: ["file"]
+              }'
+          )
+
+          response_file="$(mktemp)"
+          http_code=$(
+            curl -sS -o "${response_file}" -w "%{http_code}" -X POST "https://api.modrinth.com/v2/version" \
+              -H "Authorization: ${MODRINTH_TOKEN}" \
+              -H "User-Agent: ${GITHUB_REPOSITORY}/actions" \
+              -F "data=${payload}" \
+              -F "file=@${plugin[0]};type=application/java-archive"
+          )
+
+          if [[ "${http_code}" -lt 200 || "${http_code}" -ge 300 ]]; then
+            echo "::error::Modrinth upload failed with HTTP ${http_code}."
+            cat "${response_file}"
+            rm -f "${response_file}"
+            exit 1
+          fi
+          rm -f "${response_file}"
+
