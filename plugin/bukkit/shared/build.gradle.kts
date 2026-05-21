@@ -13,8 +13,6 @@ dependencies {
         base.library(lib)
     }
     base.collectPluginHolders()
-    val webshopxApiClasses = rootProject.file("../WebShopX/build/classes/java/main")
-    compileOnly(files(webshopxApiClasses))
     compileOnly(project(":packets"))
 }
 
