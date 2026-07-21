@@ -4,6 +4,8 @@ plugins {
 java.withJavadocJar()
 val base: top.mrxiaom.gradle.LibraryHelper by project.extra
 dependencies {
+    // Compile optional capabilities against the API owned and published by WebShopX.
+    compileOnly(files("../../../../workspace/WebShopX/build/classes/java/main"))
     val dependencies: Map<String, Boolean> by project.extra
     for ((dependency, _) in dependencies) {
         compileOnly(dependency)

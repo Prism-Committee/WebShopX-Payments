@@ -10,8 +10,25 @@ import com.webshopx.payment.api.PaymentQueryRequest;
 import com.webshopx.payment.api.PaymentQueryResult;
 import com.webshopx.payment.api.PaymentStatus;
 import com.webshopx.payment.api.WebShopXPaymentApi;
+import com.webshopx.payment.api.PaymentConfigAccess;
+import com.webshopx.payment.api.PaymentConfigApplyMode;
+import com.webshopx.payment.api.PaymentConfigDescriptor;
+import com.webshopx.payment.api.PaymentConfigField;
+import com.webshopx.payment.api.PaymentConfigFieldType;
+import com.webshopx.payment.api.PaymentConfigOption;
+import com.webshopx.payment.api.PaymentConfigProblem;
+import com.webshopx.payment.api.PaymentConfigSection;
+import com.webshopx.payment.api.PaymentConfigSnapshot;
+import com.webshopx.payment.api.PaymentConfigUpdateRequest;
+import com.webshopx.payment.api.PaymentConfigUpdateResult;
+import com.webshopx.payment.api.PaymentConfigurable;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.webshopx.payments.PluginCommon;
 import com.webshopx.payments.api.PaymentEventBridge;
 import com.webshopx.payments.func.PaymentAPI;
@@ -26,6 +43,10 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -33,11 +54,12 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBridge {
+public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentConfigurable, PaymentEventBridge {
     private static final String PROVIDER_ID = "webshopx-payments";
     private static final String DISPLAY_NAME = "WebShopX Payments";
 
@@ -84,6 +106,424 @@ public final class WsxPaymentApi implements WebShopXPaymentApi, PaymentEventBrid
         if (isMethodEnabled("stripe")) currencies.add(plugin.resolvePaymentCurrency("stripe", "USD"));
         currencies.removeIf(value -> value == null || value.trim().isEmpty());
         return Collections.unmodifiableSet(currencies);
+    }
+
+    @Override
+    public PaymentConfigDescriptor describeConfiguration() {
+        return describeConfiguration("en-US");
+    }
+
+    @Override
+    public Set<String> supportedConfigurationLocales() {
+        ensureLocaleResources();
+        Set<String> locales = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        File directory = new File(plugin.getDataFolder(), "config-locales");
+        File[] files = directory.listFiles((dir, name) -> name.matches("[A-Za-z0-9_-]+\\.yml"));
+        if (files != null) {
+            for (File file : files) locales.add(file.getName().substring(0, file.getName().length() - 4));
+        }
+        return new java.util.LinkedHashSet<>(locales);
+    }
+
+    @Override
+    public PaymentConfigDescriptor describeConfiguration(String locale) {
+        List<PaymentConfigSection> sections = new java.util.ArrayList<>();
+        sections.add(new PaymentConfigSection(
+                "payment", text(locale, "section.payment.title", "Payment"),
+                text(locale, "section.payment.description", "Runtime payment channel settings"), java.util.Arrays.asList(
+                field("payment.default-method", PaymentConfigFieldType.SELECT, text(locale, "field.default-method", "Default method"), true, null, null,
+                        java.util.Arrays.asList("alipay", "wechat", "paypal", "stripe", "mercadopago")),
+                field("payment.api-timeout-seconds", PaymentConfigFieldType.INTEGER, text(locale, "field.api-timeout", "API timeout (seconds)"), true, 1d, 120d, Collections.emptyList()),
+                field("payment.enable.alipay", PaymentConfigFieldType.BOOLEAN, text(locale, "field.enable-alipay", "Enable Alipay"), false, null, null, Collections.emptyList()),
+                field("payment.enable.wechat", PaymentConfigFieldType.BOOLEAN, text(locale, "field.enable-wechat", "Enable WeChat Pay"), false, null, null, Collections.emptyList()),
+                field("payment.enable.paypal", PaymentConfigFieldType.BOOLEAN, text(locale, "field.enable-paypal", "Enable PayPal"), false, null, null, Collections.emptyList()),
+                field("payment.enable.stripe", PaymentConfigFieldType.BOOLEAN, text(locale, "field.enable-stripe", "Enable Stripe"), false, null, null, Collections.emptyList()),
+                field("payment.enable.mercadopago", PaymentConfigFieldType.BOOLEAN, text(locale, "field.enable-mercadopago", "Enable Mercado Pago"), false, null, null, Collections.emptyList())
+        )));
+        sections.add(backendGeneralSection(locale));
+        sections.add(backendChannelSection(locale, "wechat_native", "WeChat Native", "CNY",
+                java.util.Arrays.asList("host", "currency", "app_id", "merchant_id", "merchant_serial_number", "notify_url", "public_key_id"),
+                java.util.Arrays.asList("private_key", "public_key")));
+        sections.add(backendChannelSection(locale, "alipay_face2face", "Alipay Face-to-Face", "CNY",
+                java.util.Arrays.asList("host", "currency", "app_id", "produce_code", "use_basic_polling_mode", "seller_id"),
+                java.util.Arrays.asList("private_key", "alipay_public_key")));
+        sections.add(backendChannelSection(locale, "paypal", "PayPal", "USD",
+                java.util.Arrays.asList("host", "client_id", "currency"), java.util.Collections.singletonList("client_secret")));
+        sections.add(backendChannelSection(locale, "mercadopago", "Mercado Pago", "BRL",
+                java.util.Arrays.asList("host", "currency", "sandbox", "notification_url", "back_url"),
+                java.util.Collections.singletonList("access_token")));
+        sections.add(backendChannelSection(locale, "stripe", "Stripe", "USD",
+                java.util.Arrays.asList("currency", "success_url", "cancel_url"), java.util.Collections.singletonList("secret_key")));
+        List<PaymentConfigField> hookFields = new java.util.ArrayList<>(java.util.Arrays.asList(
+                backendField("hook.enable", PaymentConfigFieldType.BOOLEAN,
+                        text(locale, "field.channel-enable", "Enable channel"), false),
+                backendField("hook.end_point", PaymentConfigFieldType.TEXT,
+                        text(locale, "backend-field.end_point", "Callback endpoint"), false),
+                backendField("hook.wechat.enable", PaymentConfigFieldType.BOOLEAN,
+                        text(locale, "backend-field.enable_wechat_hook", "Enable WeChat Hook"), false),
+                backendField("hook.wechat.payment_url", PaymentConfigFieldType.URL,
+                        text(locale, "backend-field.payment_url", "Default payment URL"), false),
+                backendField("hook.wechat.require_process", PaymentConfigFieldType.TEXT,
+                        text(locale, "backend-field.require_process", "Required process"), false),
+                backendField("hook.alipay.enable", PaymentConfigFieldType.BOOLEAN,
+                        text(locale, "backend-field.enable_alipay_hook", "Enable Alipay Hook"), false),
+                backendField("hook.alipay.payment_url", PaymentConfigFieldType.URL,
+                        text(locale, "backend-field.payment_url", "Default payment URL"), false),
+                backendField("hook.alipay.app_id", PaymentConfigFieldType.TEXT,
+                        text(locale, "backend-field.app_id", "Application ID"), false),
+                backendField("hook.alipay.seller_id", PaymentConfigFieldType.TEXT,
+                        text(locale, "backend-field.seller_id", "Seller ID"), false),
+                backendSecretField("hook.alipay.private_key",
+                        text(locale, "backend-field.private_key", "Private key or file reference")),
+                backendSecretField("hook.alipay.alipay_public_key",
+                        text(locale, "backend-field.alipay_public_key", "Alipay public key or file reference"))));
+        hookFields.addAll(localProxyFields(locale, "hook.alipay"));
+        sections.add(new PaymentConfigSection("backend-hook", "backend",
+                text(locale, "backend-section.hook", "Hook payments"), "", hookFields));
+        return new PaymentConfigDescriptor(1, sections);
+    }
+
+    private PaymentConfigSection backendGeneralSection(String locale) {
+        return new PaymentConfigSection("backend", text(locale, "section.backend.title", "Embedded backend"),
+                text(locale, "section.backend.description", "Service and proxy settings"), java.util.Arrays.asList(
+                backendField("debug", PaymentConfigFieldType.BOOLEAN, text(locale, "field.backend-debug", "Debug logging"), false),
+                selectBackendField("log_level", text(locale, "field.backend-log-level", "Log level"),
+                        java.util.Arrays.asList("INFO", "WARNING", "SEVERE", "FINE")),
+                backendNumberField("port", text(locale, "field.backend-port", "Backend port"), 1d, 65535d),
+                selectBackendField("proxy.mode", text(locale, "field.proxy-mode", "Global proxy"),
+                        java.util.Arrays.asList("DISABLED", "CUSTOM")),
+                selectBackendField("proxy.type", text(locale, "field.proxy-type", "Proxy type"), java.util.Arrays.asList("HTTP", "SOCKS")),
+                backendField("proxy.host", PaymentConfigFieldType.TEXT, text(locale, "field.proxy-host", "Proxy host"), false),
+                backendNumberField("proxy.port", text(locale, "field.proxy-port", "Proxy port"), 1d, 65535d),
+                backendField("proxy.username", PaymentConfigFieldType.TEXT, text(locale, "field.proxy-username", "Proxy username"), false),
+                backendSecretField("proxy.password", text(locale, "field.proxy-password", "Proxy password"))));
+    }
+
+    private PaymentConfigSection backendChannelSection(String locale, String channel, String fallbackTitle,
+            String defaultCurrency, List<String> ordinary, List<String> secrets) {
+        List<PaymentConfigField> fields = new java.util.ArrayList<>();
+        fields.add(backendField(channel + ".enable", PaymentConfigFieldType.BOOLEAN,
+                text(locale, "field.channel-enable", "Enable channel"), false));
+        for (String name : ordinary) {
+            PaymentConfigFieldType type = name.equals("sandbox") || name.equals("use_basic_polling_mode")
+                    ? PaymentConfigFieldType.BOOLEAN
+                    : name.contains("url") || name.equals("host") ? PaymentConfigFieldType.URL : PaymentConfigFieldType.TEXT;
+            String fallback = humanize(name) + (name.equals("currency") ? " (" + defaultCurrency + ")" : "");
+            fields.add(backendField(channel + "." + name, type,
+                    text(locale, "backend-field." + name, fallback), false));
+        }
+        for (String name : secrets) fields.add(backendSecretField(channel + "." + name,
+                text(locale, "backend-field." + name, humanize(name))));
+        fields.addAll(localProxyFields(locale, channel));
+        return new PaymentConfigSection("backend-" + channel, "backend",
+                text(locale, "backend-section." + channel, fallbackTitle), "", fields);
+    }
+
+    private List<PaymentConfigField> localProxyFields(String locale, String path) {
+        return java.util.Arrays.asList(
+                selectBackendField(path + ".proxy.mode", text(locale, "field.proxy-mode", "Channel proxy"),
+                        java.util.Arrays.asList("INHERIT", "DIRECT", "CUSTOM")),
+                selectBackendField(path + ".proxy.type", text(locale, "field.proxy-type", "Proxy type"),
+                        java.util.Arrays.asList("HTTP", "SOCKS")),
+                backendField(path + ".proxy.host", PaymentConfigFieldType.TEXT,
+                        text(locale, "field.proxy-host", "Proxy host"), false),
+                backendNumberField(path + ".proxy.port", text(locale, "field.proxy-port", "Proxy port"), 1d, 65535d),
+                backendField(path + ".proxy.username", PaymentConfigFieldType.TEXT,
+                        text(locale, "field.proxy-username", "Proxy username"), false),
+                backendSecretField(path + ".proxy.password", text(locale, "field.proxy-password", "Proxy password")));
+    }
+
+    private String text(String locale, String key, String fallback) {
+        ensureLocaleResources();
+        String normalized = locale != null && locale.matches("[A-Za-z0-9_-]+") ? locale : "en-US";
+        File directory = new File(plugin.getDataFolder(), "config-locales");
+        File requested = findLocaleFile(directory, normalized);
+        File english = findLocaleFile(directory, "en-US");
+        String englishValue = english == null ? null : YamlConfiguration.loadConfiguration(english).getString(key);
+        if (englishValue == null) englishValue = bundledText("en-US", key, fallback);
+        String requestedValue = requested == null ? null : YamlConfiguration.loadConfiguration(requested).getString(key);
+        if (requestedValue == null) requestedValue = bundledText(normalized, key, englishValue);
+        return requestedValue;
+    }
+
+    private void ensureLocaleResources() {
+        for (String locale : java.util.Arrays.asList("en-US", "zh-CN")) {
+            String resource = "config-locales/" + locale + ".yml";
+            if (!new File(plugin.getDataFolder(), resource).isFile()) plugin.saveResource(resource, false);
+        }
+    }
+
+    private File findLocaleFile(File directory, String locale) {
+        File[] files = directory.listFiles((dir, name) -> name.equalsIgnoreCase(locale + ".yml"));
+        return files == null || files.length == 0 ? null : files[0];
+    }
+
+    private String bundledText(String locale, String key, String fallback) {
+        InputStream stream = plugin.getResource("config-locales/" + locale + ".yml");
+        if (stream == null) return fallback;
+        try (InputStreamReader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
+            return YamlConfiguration.loadConfiguration(reader).getString(key, fallback);
+        } catch (IOException exception) {
+            return fallback;
+        }
+    }
+
+    @Override
+    public PaymentConfigSnapshot readConfiguration() {
+        Map<String, Object> values = new LinkedHashMap<>();
+        Set<String> configuredSecrets = new java.util.LinkedHashSet<>();
+        values.put("payment.default-method", plugin.getConfig().getString("payment.default-method", "alipay"));
+        values.put("payment.api-timeout-seconds", apiTimeoutSeconds());
+        for (String method : java.util.Arrays.asList("alipay", "wechat", "paypal", "stripe", "mercadopago")) {
+            values.put("payment.enable." + method, isMethodEnabled(method));
+        }
+        JsonObject backend = readBackendConfig();
+        for (PaymentConfigSection section : describeConfiguration("en-US").sections()) {
+            for (PaymentConfigField configField : section.fields()) {
+                if (!configField.key().startsWith("backend.")) continue;
+                String path = configField.key().substring("backend.".length());
+                Object value = path.endsWith("proxy.mode") ? proxyMode(backend, path) : jsonValue(backend, path);
+                if (configField.access() == PaymentConfigAccess.WRITE_ONLY) {
+                    if (value != null && !String.valueOf(value).trim().isEmpty()) configuredSecrets.add(configField.key());
+                } else if (value != null) {
+                    values.put(configField.key(), value);
+                }
+            }
+        }
+        return new PaymentConfigSnapshot(values, configuredSecrets);
+    }
+
+    @Override
+    public synchronized PaymentConfigUpdateResult updateConfiguration(PaymentConfigUpdateRequest request) {
+        List<PaymentConfigProblem> problems = new java.util.ArrayList<>();
+        Set<String> allowed = new java.util.HashSet<>();
+        for (PaymentConfigSection section : describeConfiguration("en-US").sections()) {
+            for (PaymentConfigField configField : section.fields()) allowed.add(configField.key());
+        }
+        for (Map.Entry<String, Object> entry : request.changes().entrySet()) {
+            if (!allowed.contains(entry.getKey())) {
+                problems.add(new PaymentConfigProblem(entry.getKey(), "unknown_or_read_only", "Setting is not writable"));
+            }
+        }
+        Object timeout = request.changes().get("payment.api-timeout-seconds");
+        if (timeout != null && (!(timeout instanceof Number) || ((Number) timeout).intValue() < 1
+                || ((Number) timeout).intValue() > 120)) {
+            problems.add(new PaymentConfigProblem("payment.api-timeout-seconds", "out_of_range", "Must be between 1 and 120"));
+        }
+        Object defaultMethod = request.changes().get("payment.default-method");
+        if (defaultMethod != null && !java.util.Arrays.asList("alipay", "wechat", "paypal", "stripe", "mercadopago")
+                .contains(String.valueOf(defaultMethod).toLowerCase(Locale.ROOT))) {
+            problems.add(new PaymentConfigProblem("payment.default-method", "invalid_option", "Unsupported payment method"));
+        }
+        for (Map.Entry<String, Object> entry : request.changes().entrySet()) {
+            if (!entry.getKey().endsWith(".proxy.mode")) continue;
+            String mode = String.valueOf(entry.getValue()).trim().toUpperCase(Locale.ROOT);
+            boolean global = "backend.proxy.mode".equals(entry.getKey());
+            List<String> modes = global ? java.util.Arrays.asList("DISABLED", "CUSTOM")
+                    : java.util.Arrays.asList("INHERIT", "DIRECT", "CUSTOM");
+            if (!modes.contains(mode)) {
+                problems.add(new PaymentConfigProblem(entry.getKey(), "invalid_option", "Unsupported proxy mode"));
+            }
+        }
+        if (!problems.isEmpty()) return PaymentConfigUpdateResult.rejected("Configuration was not changed", problems);
+        JsonObject backend = readBackendConfig();
+        request.changes().forEach((key, value) -> {
+            if (key.startsWith("backend.")) {
+                String path = key.substring("backend.".length());
+                if (path.endsWith("proxy.mode")) applyProxyMode(backend, path, String.valueOf(value));
+                else setJsonValue(backend, path, value);
+            } else {
+                plugin.getConfig().set(key, value instanceof Number ? ((Number) value).intValue() : value);
+            }
+        });
+        request.clearedSecrets().forEach(key -> {
+            if (key.startsWith("backend.")) setJsonValue(backend, key.substring("backend.".length()), "");
+        });
+        validateProxyConfigurations(backend, problems);
+        if (!problems.isEmpty()) return PaymentConfigUpdateResult.rejected("Configuration was not changed", problems);
+        writeBackendConfig(backend);
+        plugin.saveConfig();
+        // WebShopX never reloads providers. Our own reload applies modules and reconnects if needed.
+        plugin.reloadConfig();
+        return PaymentConfigUpdateResult.applied("Configuration saved and applied");
+    }
+
+    private String proxyMode(JsonObject backend, String modePath) {
+        String proxyPath = modePath.substring(0, modePath.length() - ".mode".length());
+        Object enabled = jsonValue(backend, proxyPath + ".enable");
+        if ("proxy".equals(proxyPath)) return Boolean.TRUE.equals(enabled) ? "CUSTOM" : "DISABLED";
+        if (jsonElement(backend, proxyPath) == null) return "INHERIT";
+        return Boolean.TRUE.equals(enabled) ? "CUSTOM" : "DIRECT";
+    }
+
+    private void applyProxyMode(JsonObject backend, String modePath, String rawMode) {
+        String proxyPath = modePath.substring(0, modePath.length() - ".mode".length());
+        String mode = rawMode == null ? "" : rawMode.trim().toUpperCase(Locale.ROOT);
+        if ("proxy".equals(proxyPath) && "DISABLED".equals(mode)) {
+            removeJsonValue(backend, proxyPath);
+            return;
+        }
+        if (!"proxy".equals(proxyPath) && "INHERIT".equals(mode)) {
+            removeJsonValue(backend, proxyPath);
+            return;
+        }
+        setJsonValue(backend, proxyPath + ".enable", "CUSTOM".equals(mode));
+    }
+
+    private void validateProxyConfigurations(JsonObject backend, List<PaymentConfigProblem> problems) {
+        validateProxyConfiguration(backend, "proxy", false, problems);
+        for (String path : java.util.Arrays.asList("wechat_native.proxy", "alipay_face2face.proxy",
+                "paypal.proxy", "mercadopago.proxy", "stripe.proxy", "hook.alipay.proxy")) {
+            validateProxyConfiguration(backend, path, true, problems);
+        }
+    }
+
+    private void validateProxyConfiguration(JsonObject backend, String path, boolean inheritGlobal,
+            List<PaymentConfigProblem> problems) {
+        Object enabled = jsonValue(backend, path + ".enable");
+        if (!Boolean.TRUE.equals(enabled)) return;
+        Object typeValue = inheritedProxyValue(backend, path, "type", inheritGlobal);
+        Object hostValue = inheritedProxyValue(backend, path, "host", inheritGlobal);
+        Object portValue = inheritedProxyValue(backend, path, "port", inheritGlobal);
+        String type = typeValue == null ? "HTTP" : String.valueOf(typeValue);
+        String host = hostValue == null ? "" : String.valueOf(hostValue).trim();
+        int port = portValue instanceof Number ? ((Number) portValue).intValue() : -1;
+        String key = "backend." + path;
+        if (!java.util.Arrays.asList("HTTP", "SOCKS").contains(type.toUpperCase(Locale.ROOT))) {
+            problems.add(new PaymentConfigProblem(key + ".type", "invalid_option", "Proxy type must be HTTP or SOCKS"));
+        }
+        if (host.isEmpty()) {
+            problems.add(new PaymentConfigProblem(key + ".host", "required", "Proxy host is required when proxy is enabled"));
+        }
+        if (port < 1 || port > 65535) {
+            problems.add(new PaymentConfigProblem(key + ".port", "out_of_range", "Proxy port must be between 1 and 65535"));
+        }
+    }
+
+    private Object inheritedProxyValue(JsonObject backend, String path, String field, boolean inheritGlobal) {
+        Object value = jsonValue(backend, path + "." + field);
+        if (value != null && (!(value instanceof String) || !String.valueOf(value).trim().isEmpty())) return value;
+        return inheritGlobal ? jsonValue(backend, "proxy." + field) : value;
+    }
+
+    private PaymentConfigField field(String key, PaymentConfigFieldType type, String label,
+                                     boolean required, Double minimum, Double maximum, List<String> options) {
+        return new PaymentConfigField(key, type, label, "", PaymentConfigAccess.READ_WRITE,
+                PaymentConfigApplyMode.IMMEDIATE, required, null, minimum, maximum,
+                options.stream().map(value -> new com.webshopx.payment.api.PaymentConfigOption(value, value))
+                        .collect(java.util.stream.Collectors.toList()));
+    }
+
+    private PaymentConfigField backendField(String path, PaymentConfigFieldType type, String label, boolean required) {
+        return new PaymentConfigField("backend." + path, type, label, "", PaymentConfigAccess.READ_WRITE,
+                PaymentConfigApplyMode.IMMEDIATE, required, null, null, null, Collections.emptyList());
+    }
+
+    private PaymentConfigField backendNumberField(String path, String label, Double minimum, Double maximum) {
+        return new PaymentConfigField("backend." + path, PaymentConfigFieldType.INTEGER, label, "",
+                PaymentConfigAccess.READ_WRITE, PaymentConfigApplyMode.IMMEDIATE, true, null,
+                minimum, maximum, Collections.emptyList());
+    }
+
+    private PaymentConfigField backendSecretField(String path, String label) {
+        return new PaymentConfigField("backend." + path, PaymentConfigFieldType.SECRET, label, "",
+                PaymentConfigAccess.WRITE_ONLY, PaymentConfigApplyMode.IMMEDIATE, false, null,
+                null, null, Collections.emptyList());
+    }
+
+    private PaymentConfigField selectBackendField(String path, String label, List<String> options) {
+        List<PaymentConfigOption> mapped = new java.util.ArrayList<>();
+        for (String option : options) mapped.add(new PaymentConfigOption(option, option));
+        return new PaymentConfigField("backend." + path, PaymentConfigFieldType.SELECT, label, "",
+                PaymentConfigAccess.READ_WRITE, PaymentConfigApplyMode.IMMEDIATE, true, null,
+                null, null, mapped);
+    }
+
+    private String humanize(String value) {
+        String[] words = value.split("_");
+        StringBuilder result = new StringBuilder();
+        for (String word : words) {
+            if (result.length() > 0) result.append(' ');
+            result.append(word.isEmpty() ? word : Character.toUpperCase(word.charAt(0)) + word.substring(1));
+        }
+        return result.toString();
+    }
+
+    private File backendConfigFile() {
+        return new File(new File(plugin.getDataFolder(), "backend"), "config.json");
+    }
+
+    private JsonObject readBackendConfig() {
+        File file = backendConfigFile();
+        if (!file.isFile()) return new JsonObject();
+        try {
+            JsonElement parsed = new JsonParser().parse(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
+            return parsed != null && parsed.isJsonObject() ? parsed.getAsJsonObject() : new JsonObject();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to read backend/config.json", exception);
+        }
+    }
+
+    private void writeBackendConfig(JsonObject config) {
+        File file = backendConfigFile();
+        try {
+            Files.createDirectories(file.toPath().getParent());
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            Files.write(file.toPath(), gson.toJson(config).getBytes(StandardCharsets.UTF_8));
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to write backend/config.json", exception);
+        }
+    }
+
+    private Object jsonValue(JsonObject root, String path) {
+        JsonElement current = jsonElement(root, path);
+        if (current == null || current.isJsonNull()) return null;
+        if (current.isJsonPrimitive()) {
+            if (current.getAsJsonPrimitive().isBoolean()) return current.getAsBoolean();
+            if (current.getAsJsonPrimitive().isNumber()) return current.getAsNumber();
+            return current.getAsString();
+        }
+        return current.toString();
+    }
+
+    private JsonElement jsonElement(JsonObject root, String path) {
+        String[] parts = path.split("\\.");
+        JsonElement current = root;
+        for (String part : parts) {
+            if (current == null || !current.isJsonObject()) return null;
+            current = current.getAsJsonObject().get(part);
+        }
+        return current;
+    }
+
+    private void setJsonValue(JsonObject root, String path, Object value) {
+        String[] parts = path.split("\\.");
+        JsonObject current = root;
+        for (int i = 0; i < parts.length - 1; i++) {
+            JsonElement child = current.get(parts[i]);
+            if (child == null || !child.isJsonObject()) {
+                JsonObject created = new JsonObject();
+                current.add(parts[i], created);
+                current = created;
+            } else {
+                current = child.getAsJsonObject();
+            }
+        }
+        String name = parts[parts.length - 1];
+        if (value instanceof Boolean) current.addProperty(name, (Boolean) value);
+        else if (value instanceof Number) current.addProperty(name, (Number) value);
+        else current.addProperty(name, value == null ? "" : String.valueOf(value));
+    }
+
+    private void removeJsonValue(JsonObject root, String path) {
+        String[] parts = path.split("\\.");
+        JsonObject current = root;
+        for (int i = 0; i < parts.length - 1; i++) {
+            JsonElement child = current.get(parts[i]);
+            if (child == null || !child.isJsonObject()) return;
+            current = child.getAsJsonObject();
+        }
+        current.remove(parts[parts.length - 1]);
     }
 
     @Override

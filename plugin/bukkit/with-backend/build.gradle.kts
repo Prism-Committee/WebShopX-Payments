@@ -38,6 +38,10 @@ tasks {
         duplicatesStrategy = DuplicatesStrategy.INCLUDE
         configurations.add(project.configurations.runtimeClasspath.get())
         configurations.add(shadowLink)
+        // WebShopX owns the public payment API. Bundling another copy here makes
+        // Bukkit's ServicesManager see two different Class instances and prevents
+        // WebShopX from resolving the provider registered by this plugin.
+        exclude("com/webshopx/payment/api/**")
         exclude(
             "META-INF/LICENSE",
             "META-INF/LICENSE.txt",
@@ -76,6 +80,14 @@ tasks {
             }
             mergeServiceFiles()
             transform(Log4j2PluginsCacheFileTransformer())
+        }
+        doLast {
+            val bundledApi = zipTree(archiveFile.get().asFile).matching {
+                include("com/webshopx/payment/api/**")
+            }.files
+            check(bundledApi.isEmpty()) {
+                "WebShopX payment API classes must not be bundled in ${archiveFile.get().asFile.name}"
+            }
         }
     }
     val copyTask = this.register<Copy>("copyBuildArtifact") {

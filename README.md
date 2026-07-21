@@ -2,6 +2,11 @@ This plugin is based on [SweetCheckout](https://github.com/MrXiaoM/SweetCheckout
 
 # WebShopX-Payments / WSXPay
 
+Selected runtime settings are optionally exposed through the neutral `PaymentConfigurable`
+capability. WebShopX only displays and forwards edits; this plugin validates, persists and applies
+them. WebShopX never reloads this plugin. If a future setting requires rebuilding an internal
+component, that work belongs inside `updateConfiguration()` at the appropriate point.
+
 WebShopX-Payments 是 WebShopX 的支付 provider 插件。它通过 Bukkit `ServicesManager` 注册 `WebShopXPaymentApi` provider，启动内嵌支付后端，并把支付结果回传给 WebShopX。
 
 WebShopX 仍然负责充值订单、钱包余额、账务入账和发货。WebShopX-Payments 只负责创建支付、轮询或接收支付状态、转发支付结果事件、可选的游戏内二维码地图展示，以及可选的 Hook 收款匹配。
@@ -79,6 +84,8 @@ out/WebShopX-Payments-<version>-full.jar
 - `map-item`：可选的地图二维码物品设置
 
 `backend/config.json` 控制支付平台凭据：
+
+代理配置支持全局与渠道级覆盖。根级 `proxy` 为可选全局代理；渠道未配置 `proxy` 时继承全局设置，渠道 `proxy.enable=false` 表示强制直连，`proxy.enable=true` 表示使用渠道代理，未填写的渠道代理字段继续继承全局值。WebShopX 的 Provider 设置页以“添加代理/移除代理”方式维护这些可选配置块。
 
 - `paypal`：PayPal REST API 凭据、接口地址、币种、代理
 - `mercadopago`：MercadoPago Access Token、接口地址、币种、Checkout Pro 返回/通知地址、代理
