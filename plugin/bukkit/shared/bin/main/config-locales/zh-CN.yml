@@ -17,6 +17,7 @@ field:
   backend-log-level: '日志级别'
   backend-port: '后端端口'
   proxy-enable: '启用代理'
+  proxy-mode: '代理设置'
   proxy-type: '代理类型'
   proxy-host: '代理主机'
   proxy-port: '代理端口'

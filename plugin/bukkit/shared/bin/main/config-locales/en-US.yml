@@ -17,6 +17,7 @@ field:
   backend-log-level: 'Log level'
   backend-port: 'Backend port'
   proxy-enable: 'Enable proxy'
+  proxy-mode: 'Proxy settings'
   proxy-type: 'Proxy type'
   proxy-host: 'Proxy host'
   proxy-port: 'Proxy port'

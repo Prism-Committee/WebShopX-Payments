@@ -1,0 +1,18 @@
+name: WebShopX-Payments
+version: '${version}'
+main: com.webshopx.payments.WsxPay
+api-version: 1.13
+softdepend:
+  - WebShopX
+authors: [ WebShopX ]
+folia-supported: true
+# PluginBase Libraries ${libraries_config}
+commands:
+  wsxpay:
+    description: 'The admin/debug command of WebShopX-Payments'
+    permission: webshopxpayments.command
+permissions:
+  webshopxpayments.command:
+    default: true
+  webshopxpayments.admin:
+    default: op
