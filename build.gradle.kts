@@ -6,7 +6,7 @@ plugins {
 }
 allprojects {
     group = "com.webshopx.payments"
-    version = "1.0.11"
+    version = "3.1.1"
 }
 subprojects {
     if (File(projectDir, "src").exists()) {
